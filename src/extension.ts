@@ -71,6 +71,39 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
       }),
+      vscode.commands.registerCommand("agent-maestro.startProcess", async (command: string) => {
+        try {
+          const process = controller.wqMaestroAdapter.startProcess({
+            command: command
+          });
+          
+          for await (const event of process) {
+            if (event.type === "processOutput") {
+              vscode.window.showInformationMessage(
+                `Process output: ${event.data}`
+              );
+            }
+          }
+        } catch (error) {
+          logger.error("Error starting process:", error);
+          vscode.window.showErrorMessage(
+            `Failed to start process: ${(error as Error).message}`,
+          );
+        }
+      }),
+      vscode.commands.registerCommand("agent-maestro.listProcesses", async () => {
+        try {
+          const processes = await controller.wqMaestroAdapter.listProcesses();
+          vscode.window.showInformationMessage(
+            `Active processes: ${processes.join(", ")}`
+          );
+        } catch (error) {
+          logger.error("Error listing processes:", error);
+          vscode.window.showErrorMessage(
+            `Failed to list processes: ${(error as Error).message}`,
+          );
+        }
+      }),
     ];
 
     context.subscriptions.push(...disposables);
@@ -96,4 +129,3 @@ export async function deactivate() {
     logger.error("Error during deactivation:", error);
   }
 }
-

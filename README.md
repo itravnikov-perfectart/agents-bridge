@@ -1,87 +1,50 @@
-# Agents Bridge - RooCode Integration
+# WQ Maestro - Distributed Agent Management System
 
-A bridge extension for integrating with RooCode AI assistant. Provides two-way communication and result execution capabilities.
+## Key Features
 
-## Features
-
-- **RooCode Integration**: Seamless communication with RooCode extension
-- **Result Execution**: Automatically execute commands and results from RooCode
-- **Configuration**: Customizable settings for integration behavior
-
-## Commands
-
-- `agent-maestro.getStatus`: Show extension status
-- `agent-maestro.sendToRoo`: Send message to RooCode
-- `agent-maestro.executeRooResult`: Execute result from RooCode (internal)
+- **WebSocket Communication**: Real-time bidirectional messaging
+- **Docker Orchestration**: Container lifecycle management
+- **Task Queues**: Redis/BullMQ for distributed task processing  
+- **Unified Monitoring**: Centralized UI for process tracking
+- **WebSocket Integration**: Real-time cross-instance communication
 
 ## Configuration
 
-```json
-{
-  "agentMaestro.rooCodeIntegration": true,
-  "agentMaestro.rooCodeIdentifier": "roo-code",
-  "agentMaestro.autoExecuteResults": true
+```typescript
+// Basic setup
+const maestro = new WQMaestroService(
+  8080, // WebSocket port
+  { 
+    host: 'redis-host',
+    port: 6379,
+    password: 'secret',
+    db: 0
+  }
+);
+
+// Start a process
+const process = await maestro.startProcess({
+  image: 'node:18',
+  command: ['npm', 'start'],
+  env: { NODE_ENV: 'production' }
+});
+
+// Monitor events
+for await (const event of process) {
+  console.log(event);
 }
 ```
+
+## Components
+
+- `WQMaestroService`: Core orchestration service
+- `WQMaestroUI`: React-based monitoring interface
+- `WebSocket`: Real-time instance communication
+- `WQMaestroAdapter`: VS Code extension integration
 
 ## Requirements
 
-- RooCode extension installed
-- VS Code 1.102.0 or higher
-
-## Extension Settings
-
-Enable/disable RooCode integration through the settings UI or workspace settings.
-
-## Usage Examples
-
-### 1. Sending a message to RooCode
-```javascript
-// In your extension code:
-await vscode.commands.executeCommand(
-  'agent-maestro.sendToRoo',
-  'Analyze this code and suggest improvements'
-);
-```
-
-### 2. Receiving and executing results
-RooCode can return results in two formats:
-
-**Simple command:**
-```json
-"vscode.open"
-```
-
-**Structured command:**
-```json
-{
-  "type": "execute",
-  "command": "vscode.open",
-  "args": ["file:///path/to/file"]
-}
-```
-
-### 3. Checking extension status
-```javascript
-// Get current status
-const status = await vscode.commands.executeCommand('agent-maestro.getStatus');
-console.log(status);
-```
-
-### 4. Keybindings (add to keybindings.json)
-```json
-{
-  "command": "agent-maestro.sendToRoo",
-  "key": "ctrl+alt+r",
-  "when": "editorTextFocus"
-}
-```
-
-### 5. Configuration example (settings.json)
-```json
-{
-  "agentMaestro.rooCodeIntegration": true,
-  "agentMaestro.autoExecuteResults": true,
-  "agentMaestro.rooCodeIdentifier": "roo-code-pro"
-}
-```
+- Node.js 18+
+- Docker
+- Redis
+- VS Code Extension Host

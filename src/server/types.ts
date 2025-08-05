@@ -1,74 +1,45 @@
-import {
-  RooCodeSettings,
-  RooCodeEventName,
-  ClineMessage,
-} from "@roo-code/types";
+import { RooCodeEventName } from "@roo-code/types";
 
-export interface TaskEventBasicData {
-  taskId: string;
-}
-
-export interface MessageEventData extends TaskEventBasicData {
-  action: "created" | "updated";
-  message: ClineMessage;
-}
-
-export interface TaskCompletedEventData extends TaskEventBasicData {
-  tokenUsage: any;
-  toolUsage: any;
-}
-
-export interface TaskModeSwitchedEventData extends TaskEventBasicData {
-  mode: string;
-}
-
-export interface TaskSpawnedEventData extends TaskEventBasicData {
-  childTaskId: string;
-}
-
-export interface TaskTokenUsageUpdatedEventData extends TaskEventBasicData {
-  tokenUsage: any;
-}
-
-export interface TaskToolFailedEventData extends TaskEventBasicData {
-  tool: string;
-  error: any;
-}
-
-// Discriminated union for TaskEvent data based on event type
-export type TaskEventData<T extends RooCodeEventName = RooCodeEventName> =
-  T extends RooCodeEventName.Message
-    ? MessageEventData
-    : T extends RooCodeEventName.TaskCreated
-      ? TaskEventBasicData
-      : T extends RooCodeEventName.TaskStarted
-        ? TaskEventBasicData
-        : T extends RooCodeEventName.TaskCompleted
-          ? TaskCompletedEventData
-          : T extends RooCodeEventName.TaskAborted
-            ? TaskEventBasicData
-            : T extends RooCodeEventName.TaskPaused
-              ? TaskEventBasicData
-              : T extends RooCodeEventName.TaskUnpaused
-                ? TaskEventBasicData
-                : T extends RooCodeEventName.TaskModeSwitched
-                  ? TaskModeSwitchedEventData
-                  : T extends RooCodeEventName.TaskSpawned
-                    ? TaskSpawnedEventData
-                    : T extends RooCodeEventName.TaskAskResponded
-                      ? TaskEventBasicData
-                      : T extends RooCodeEventName.TaskTokenUsageUpdated
-                        ? TaskTokenUsageUpdatedEventData
-                        : T extends RooCodeEventName.TaskToolFailed
-                          ? TaskToolFailedEventData
-                          : never;
-
-export interface TaskEvent<T extends RooCodeEventName = RooCodeEventName> {
+export interface TaskEvent<T = RooCodeEventName> {
   name: T;
-  data: TaskEventData<T>;
+  data: any;
 }
 
-export interface TaskEvent<T extends RooCodeEventName = RooCodeEventName> {
-  name: T;
-  data: TaskEventData<T>;
+export interface ProcessEvent {
+  type: string;
+  processId: string;
+  timestamp: number;
+  exitCode?: number;
+  outputType?: string;
+  data?: any;
+  error?: Error;
+}
+
+export interface ProcessStatus {
+  pid?: number;
+  containerId?: string;
+  jobId?: string;
+  status: 'unknown' | 'created' | 'running' | 'stopped' | 'failed' | 'completed';
+  exitCode?: number;
+  memoryUsage?: number;
+  cpuUsage?: number;
+  startTime?: number;
+  endTime?: number;
+  command?: string;
+  image?: string;
+  host?: string;
+  ports?: number[];
+  queue?: string;
+  progress?: number;
+  websocketConnected?: boolean;
+  lastHeartbeat?: number;
+  error?: string;
+}
+
+export interface ProcessOptions {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  autoRestart?: boolean;
 }

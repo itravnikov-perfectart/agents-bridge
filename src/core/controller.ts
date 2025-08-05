@@ -3,6 +3,7 @@ import * as vscode from "vscode";
 import { logger } from "../utils/logger";
 import { ClineAdapter } from "./ClineAdapter";
 import { RooCodeAdapter } from "./RooCodeAdapter";
+import { WQMaestroAdapter } from "./WQMaestroAdapter";
 import {
   AgentMaestroConfiguration,
   DEFAULT_CONFIG,
@@ -11,12 +12,13 @@ import {
 import { ExtensionStatus } from "../utils/systemInfo";
 
 /**
- * Core controller to manage Cline and RooCode extensions
+ * Core controller to manage Cline, RooCode and WQ Maestro extensions
  * Provides unified API access and can be used by both VSCode extension and local server
  */
 export class ExtensionController extends EventEmitter {
   public readonly clineAdapter: ClineAdapter;
   public readonly rooAdapterMap: Map<string, RooCodeAdapter> = new Map();
+  public readonly wqMaestroAdapter: WQMaestroAdapter;
   private currentConfig: AgentMaestroConfiguration = readConfiguration();
   public isInitialized = false;
   private activeTaskListeners: Map<string, vscode.Disposable> = new Map();
@@ -24,8 +26,7 @@ export class ExtensionController extends EventEmitter {
   constructor() {
     super();
     this.clineAdapter = new ClineAdapter();
-
-    // Initialize RooCode adapters with current configuration
+    this.wqMaestroAdapter = new WQMaestroAdapter("wq.maestro");
     this.initializeRooAdapters(this.currentConfig);
   }
 
@@ -88,6 +89,9 @@ export class ExtensionController extends EventEmitter {
     // Initialize ClineAdapter
     await this.clineAdapter.initialize();
 
+    // Initialize WQ Maestro Adapter
+    await this.wqMaestroAdapter.initialize();
+
     // Initialize all RooCode adapters
     for (const [id, adapter] of this.rooAdapterMap) {
       await adapter.initialize();
@@ -97,6 +101,7 @@ export class ExtensionController extends EventEmitter {
     // Check if at least one adapter is active
     const hasActiveAdapter =
       this.clineAdapter.isActive ||
+      this.wqMaestroAdapter.isActive ||
       Array.from(this.rooAdapterMap.values()).some(
         (adapter) => adapter.isActive,
       );
@@ -172,6 +177,13 @@ export class ExtensionController extends EventEmitter {
       version: this.clineAdapter.getVersion(),
     };
 
+    // WQ Maestro status
+    status["wq-maestro"] = {
+      isInstalled: this.wqMaestroAdapter.isInstalled(),
+      isActive: this.wqMaestroAdapter.isActive,
+      version: this.wqMaestroAdapter.getVersion(),
+    };
+
     // Roo variants status
     for (const [extensionId, adapter] of this.rooAdapterMap) {
       status[extensionId] = {
@@ -192,6 +204,7 @@ export class ExtensionController extends EventEmitter {
     this.isInitialized = false;
 
     await this.clineAdapter.dispose();
+    await this.wqMaestroAdapter.dispose();
 
     // Dispose all RooCode adapters
     for (const adapter of this.rooAdapterMap.values()) {
