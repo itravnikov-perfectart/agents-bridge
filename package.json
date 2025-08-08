@@ -4,7 +4,7 @@
   "description": "Bridge extension for integrating with RooCode AI assistant. Provides two-way communication and result execution capabilities.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.102.0"
+    "vscode": "^1.101.2"
   },
   "categories": [
     "AI",
@@ -42,6 +42,16 @@
         "command": "agent-maestro.executeRooResult",
         "title": "Agent Maestro: Execute RooCode Result",
         "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.startProcess",
+        "title": "Agent Maestro: Start Process",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.listProcesses",
+        "title": "Agent Maestro: List Processes",
+        "category": "Agent Maestro"
       }
     ],
     "configuration": {
@@ -77,10 +87,12 @@
     "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
-    "test": "vscode-test"
+    "test": "vscode-test",
+    "start:service": "node ./dist/server/WQMaestroService.js"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.12",
+    "@types/jest": "^29.5.14",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.102.0",
@@ -93,22 +105,27 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-node": "^11.1.0",
     "eslint-plugin-prettier": "^5.5.3",
+    "jest": "^29.7.0",
     "npm-run-all": "^4.1.5",
     "prettier": "^3.6.2",
-    "typescript": "^5.8.3"
+    "ts-jest": "^29.4.1",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.4"
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.57.0",
     "@roo-code/types": "^1.40.0",
-    "zod": "^3.25.76",
-    "ws": "^8.17.0",
-    "dockerode": "^4.0.7",
-    "bullmq": "^5.5.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/recharts": "^1.8.29",
     "@types/ws": "^8.5.10",
+    "bullmq": "^5.5.0",
+    "dockerode": "^4.0.7",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0"
+    "recharts": "^2.15.4",
+    "ws": "^8.17.0",
+    "zod": "^3.25.76"
   }
 }

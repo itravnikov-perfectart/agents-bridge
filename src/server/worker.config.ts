@@ -1,6 +1,10 @@
-import { Queue, Worker as BullWorker } from 'bullmq';
+import { Queue, Worker as BullWorker, AdvancedOptions } from 'bullmq';
 import { logger } from '../utils/logger';
 import Docker from 'dockerode';
+
+interface CustomAdvancedOptions extends AdvancedOptions {
+  maxStalledCount?: number;
+}
 
 export interface RedisConfig {
   host: string;
@@ -18,8 +22,17 @@ export interface WorkerConfig {
 export const createTaskQueue = (config: WorkerConfig) => {
   const { queueName, redis } = config;
   
-  const queue = new Queue(queueName, { connection: redis });
-  logger.info(`Created task queue ${queueName}`);
+  const queue = new Queue(queueName, {
+    connection: redis,
+    defaultJobOptions: {
+      attempts: 3,
+      backoff: {
+        type: 'exponential',
+        delay: 1000
+      }
+    }
+  });
+  logger.info(`Created task queue ${queueName} with retry policy`);
 
   return queue;
 };
@@ -34,19 +47,29 @@ export const createWorker = (
 ) => {
   const { queueName, redis, concurrency = 5 } = config;
 
-  const worker = new BullWorker(queueName, async (job: { name: string; data: any }) => {
-    switch (job.name) {
-      case 'startContainer':
-        return handlers.startContainer(job.data);
-      case 'stopContainer':
-        if (!job.data.containerId) {
-          throw new Error('Missing containerId in stopContainer job');
-        }
-        return handlers.stopContainer(job.data.containerId);
+  const worker = new BullWorker(queueName, async (job: { name: string; data: any, attemptsMade: number }) => {
+    try {
+      logger.info(`Processing job ${job.name} (attempt ${job.attemptsMade + 1})`);
+      
+      switch (job.name) {
+        case 'startContainer':
+          return await handlers.startContainer(job.data);
+        case 'stopContainer':
+          if (!job.data.containerId) {
+            throw new Error('Missing containerId in stopContainer job');
+          }
+          return await handlers.stopContainer(job.data.containerId);
+      }
+    } catch (error) {
+      logger.error(`Job ${job.name} failed (attempt ${job.attemptsMade + 1})`, error);
+      throw error;
     }
-  }, { 
+  }, {
     connection: redis,
-    concurrency
+    concurrency,
+    settings: {
+      maxStalledCount: 0 // Disable stalled check for now
+    } as CustomAdvancedOptions
   });
 
   worker.on('completed', (job: { id?: string }) => {

@@ -1,4 +1,5 @@
 import { WebSocket } from 'ws';
+import { WebSocket as WSClient } from 'ws';
 import { logger } from '../utils/logger';
 import Docker from 'dockerode';
 import { ProcessEvent, ProcessStatus, ProcessOptions } from './types';
@@ -9,6 +10,7 @@ import { Worker as BullWorker } from 'bullmq';
 export class WQMaestroService {
   private wss: WebSocketServerInstance;
   private docker: Docker;
+  private port: number;
   private taskQueue: ReturnType<typeof createTaskQueue>;
   private agents: Map<string, { ws: WebSocket, lastPing: number }> = new Map();
   private instances: Map<string, { ws: WebSocket, lastPing: number }> = new Map();
@@ -20,6 +22,7 @@ export class WQMaestroService {
     port: number = 8080,
     redisConfig: RedisConfig = { host: 'localhost', port: 6379 }
   ) {
+    this.port = port;
     this.wss = createWebSocketServer({ port });
     this.docker = new Docker();
     this.taskQueue = createTaskQueue({
@@ -57,10 +60,31 @@ export class WQMaestroService {
   }
 
   private setupWebSocket(): void {
-    this.wss.on('connection', (ws: WebSocket) => {
+    this.wss.on('connection', (ws: WebSocket, req) => {
+      const token = req.headers['sec-websocket-protocol']?.toString().split(', ')[1];
+      if (!token) {
+        ws.close(1008, 'Authentication required');
+        return;
+      }
+
+      // TODO: Verify JWT token
+      let authenticated = false;
+      
       ws.on('message', (data: string) => {
         try {
           const message = JSON.parse(data);
+          
+          if (!authenticated && message.type !== 'authenticate') {
+            ws.close(1008, 'Authentication required');
+            return;
+          }
+
+          if (message.type === 'authenticate') {
+            // TODO: Verify token
+            authenticated = true;
+            return;
+          }
+
           this.handleMessage(ws, message);
         } catch (err) {
           logger.error('Invalid message format', err);
@@ -68,7 +92,9 @@ export class WQMaestroService {
       });
 
       ws.on('close', () => {
-        this.cleanupAgent(ws);
+        if (authenticated) {
+          this.cleanupAgent(ws);
+        }
       });
     });
   }
@@ -92,38 +118,39 @@ export class WQMaestroService {
         throw new Error('Message type must be string');
       }
 
-    if (msg.type === 'registerInstance' && msg.instanceId) {
-      this.instances.set(msg.instanceId, { ws, lastPing: Date.now() });
-      logger.info(`Instance registered: ${msg.instanceId}`);
-      return;
-    }
-    switch (message.type) {
-      case 'register':
-        if (!msg.agentId) {
-          logger.error('Register message missing agentId');
-          break;
-        }
-        this.agents.set(msg.agentId, { ws, lastPing: Date.now() });
-        logger.info(`Agent registered: ${msg.agentId}`);
-        break;
-      case 'processEvent':
-        if (!msg.event) {
-          logger.error('ProcessEvent message missing event');
-          break;
-        }
-        this.broadcastProcessEvent(msg.event);
-        break;
-      case 'statusUpdate':
-        if (!msg.processId || !msg.status) {
-          logger.error('StatusUpdate message missing processId or status');
-          break;
-        }
-        this.processStatuses.set(msg.processId, msg.status);
-        break;
-    }
-  }catch(err) {
+      if (msg.type === 'registerInstance' && msg.instanceId) {
+        this.instances.set(msg.instanceId, { ws, lastPing: Date.now() });
+        logger.info(`Instance registered: ${msg.instanceId}`);
+        return;
+      }
 
-  }
+      switch (msg.type) {
+        case 'register':
+          if (!msg.agentId) {
+            logger.error('Register message missing agentId');
+            break;
+          }
+          this.agents.set(msg.agentId, { ws, lastPing: Date.now() });
+          logger.info(`Agent registered: ${msg.agentId}`);
+          break;
+        case 'processEvent':
+          if (!msg.event) {
+            logger.error('ProcessEvent message missing event');
+            break;
+          }
+          this.broadcastProcessEvent(msg.event);
+          break;
+        case 'statusUpdate':
+          if (!msg.processId || !msg.status) {
+            logger.error('StatusUpdate message missing processId or status');
+            break;
+          }
+          this.processStatuses.set(msg.processId, msg.status);
+          break;
+      }
+    } catch (err) {
+      logger.error('Error handling message', err);
+    }
   }
 
   private broadcastProcessEvent(event: ProcessEvent): void {
@@ -153,9 +180,8 @@ export class WQMaestroService {
 
   private sendToInstance(instanceId: string, type: string, data: any): void {
     const instance = this.instances.get(instanceId);
-    const instanceConn = this.instances.get(instanceId);
-    if (instanceConn && instanceConn.ws.readyState === WebSocket.OPEN) {
-      instanceConn.ws.send(JSON.stringify({ type, data }));
+    if (instance && instance.ws.readyState === WebSocket.OPEN) {
+      instance.ws.send(JSON.stringify({ type, data }));
     } else {
       logger.warn(`Instance ${instanceId} not connected`);
     }
@@ -267,24 +293,53 @@ export class WQMaestroService {
     return Array.from(this.processStatuses.keys());
   }
 
+  public async createWebSocketConnection(clientId: string, token?: string): Promise<WebSocket> {
+    return new Promise((resolve, reject) => {
+      const ws = new WSClient(`ws://localhost:${this.port}`, {
+        headers: {
+          'Sec-WebSocket-Protocol': `wq-maestro, ${token || ''}`
+        }
+      });
+
+      ws.on('open', () => {
+        ws.send(JSON.stringify({
+          type: 'authenticate',
+          clientId,
+          token
+        }));
+        resolve(ws);
+      });
+
+      ws.on('error', (err) => {
+        reject(err);
+      });
+
+      ws.on('close', (code, reason) => {
+        if (code === 1008) { // Authentication failed
+          reject(new Error(reason.toString()));
+        }
+      });
+    });
+  }
+
   public async stop(): Promise<void> {
-    // Остановка интервала проверки состояния
+    // Stop health checks
     if (this.healthCheckInterval) {
       clearInterval(this.healthCheckInterval);
       this.healthCheckInterval = null;
     }
 
-    // Закрытие worker
+    // Close worker
     if (this.worker) {
       await this.worker.close();
     }
 
-    // Закрытие всех соединений
+    // Close all connections
     this.wss.clients.forEach(client => client.terminate());
     this.agents.clear();
     this.instances.clear();
 
-    // Закрытие WebSocket сервера
+    // Close WebSocket server
     await new Promise<void>((resolve) => {
       this.wss.server.close(() => resolve());
     });

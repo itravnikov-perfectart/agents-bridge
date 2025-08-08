@@ -1,5 +1,15 @@
 import { RooCodeEventName } from "@roo-code/types";
 
+export interface AuthMessage {
+  type: 'authenticate';
+  token: string;
+}
+
+export interface AuthError {
+  code: number;
+  message: string;
+}
+
 export interface TaskEvent<T = RooCodeEventName> {
   name: T;
   data: any;
@@ -41,5 +51,7 @@ export interface ProcessOptions {
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
+  image?: string;
+  ports?: number[];
   autoRestart?: boolean;
 }

@@ -10,6 +10,8 @@ let controller: ExtensionController;
 
 export async function activate(context: vscode.ExtensionContext) {
   // Only show logger automatically in development mode
+  vscode.window.showInformationMessage('Agent Maestro extension activated!');
+  logger.info('Extension activated successfully');
   const isDevMode = context.extensionMode === vscode.ExtensionMode.Development;
   if (isDevMode) {
     logger.show();
@@ -33,6 +35,9 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     // Register commands
     const disposables = [
+      vscode.commands.registerCommand("agents-bridge.helloWorld", () => {
+        vscode.window.showInformationMessage("Hello World from agents-bridge!");
+      }),
       vscode.commands.registerCommand("agent-maestro.getStatus", () => {
         try {
           const systemInfo = getSystemInfo(controller);
@@ -46,19 +51,27 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
       }),
-      vscode.commands.registerCommand("agent-maestro.sendToRoo", async (message: string) => {
+      vscode.commands.registerCommand("agent-maestro.sendToRoo", async () => {
         try {
           const adapter = controller.getRooAdapter();
           if (!adapter) {
             throw new Error("No active RooCode adapter found");
           }
-          
+
+          // Сначала запрашиваем сообщение
+          const message = await vscode.window.showInputBox({
+            prompt: 'Введите сообщение для RooCode',
+            placeHolder: 'Ваше сообщение...'
+          });
+
+          if (!message) return; // Отмена ввода
+
           for await (const event of adapter.sendMessage(message)) {
             if (event.name === RooCodeEventName.Message) {
               const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
               if (messageEvent.data.message?.text) {
                 await vscode.commands.executeCommand(
-                  `agent-maestro.executeRooResult-${adapter['extensionId']}`,
+                  "agent-maestro.executeRooResult",
                   messageEvent.data.message.text
                 );
               }
@@ -88,6 +101,58 @@ export async function activate(context: vscode.ExtensionContext) {
           logger.error("Error starting process:", error);
           vscode.window.showErrorMessage(
             `Failed to start process: ${(error as Error).message}`,
+          );
+        }
+      }),
+      vscode.commands.registerCommand("agent-maestro.executeRooResult", async (result: string) => {
+        try {
+          const adapter = controller.getRooAdapter();
+          if (!adapter) {
+            throw new Error("No active RooCode adapter found");
+          }
+          // Use existing sendMessage functionality
+          for await (const event of adapter.sendMessage(result)) {
+            if (event.name === RooCodeEventName.Message) {
+              const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
+              if (messageEvent.data.message?.text) {
+                vscode.window.showInformationMessage(
+                  `RooCode response: ${messageEvent.data.message.text}`
+                );
+              }
+            }
+          }
+          vscode.window.showInformationMessage("RooCode result processed successfully");
+        } catch (error) {
+          logger.error("Error executing RooCode result:", error);
+          vscode.window.showErrorMessage(
+            `Failed to execute RooCode result: ${(error as Error).message}`,
+          );
+        }
+      }),
+      vscode.commands.registerCommand("agent-maestro.saveRooCodeSettings", async () => {
+        try {
+          const adapter = controller.getRooAdapter();
+          if (!adapter) {
+            throw new Error("No active RooCode adapter found");
+          }
+          
+          // Получить текущие настройки
+          const currentConfig = adapter.getConfiguration();
+          
+          // Показать диалог для редактирования
+          const newConfig = await vscode.window.showInputBox({
+            prompt: 'Enter RooCode settings (JSON format)',
+            value: JSON.stringify(currentConfig, null, 2)
+          });
+          
+          if (newConfig) {
+            await adapter.setConfiguration(JSON.parse(newConfig));
+            vscode.window.showInformationMessage("RooCode settings saved successfully");
+          }
+        } catch (error) {
+          logger.error("Error saving RooCode settings:", error);
+          vscode.window.showErrorMessage(
+            `Failed to save settings: ${(error as Error).message}`,
           );
         }
       }),
