@@ -35,10 +35,16 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private taskEventResolvers: Map<string, ((event: TaskEvent) => void)[]> =
     new Map();
   private extensionId: string;
+  public lastHeartbeat = 0;
+  public containerId?: string;
 
   constructor(extensionId: string) {
     super();
     this.extensionId = extensionId;
+    // Setup periodic heartbeat
+    setInterval(() => {
+      this.lastHeartbeat = Date.now();
+    }, 5000); // Update heartbeat every 5 seconds
   }
 
   /**

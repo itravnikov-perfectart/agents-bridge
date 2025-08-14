@@ -4,7 +4,7 @@
   "description": "Bridge extension for integrating with RooCode AI assistant. Provides two-way communication and result execution capabilities.",
   "version": "0.0.1",
   "engines": {
-    "vscode": "^1.101.2"
+    "vscode": "^1.103.0"
   },
   "categories": [
     "AI",
@@ -52,6 +52,11 @@
         "command": "agent-maestro.listProcesses",
         "title": "Agent Maestro: List Processes",
         "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.showUI",
+        "title": "Agent Maestro: Show UI",
+        "category": "Agent Maestro"
       }
     ],
     "configuration": {
@@ -88,7 +93,12 @@
     "check-types": "tsc --noEmit",
     "lint": "eslint src",
     "test": "vscode-test",
-    "start:service": "node ./dist/server/WQMaestroService.js"
+    "start:ui": "vite serve src/ui --port 3000",
+    "build:ui": "cd src/ui && vite build",
+    "build": "pnpm run compile && pnpm run build:ui",
+    "build:extension": "pnpm run compile && pnpm run vscode:prepublish",
+    "prebuild": "pnpm install",
+    "dev": "pnpm run watch"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.12",
@@ -109,22 +119,30 @@
     "npm-run-all": "^4.1.5",
     "prettier": "^3.6.2",
     "ts-jest": "^29.4.1",
+    "ts-node": "^10.9.2",
     "typescript": "^5.8.3",
+    "vite": "^5.2.0",
     "vitest": "^3.2.4"
   },
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.57.0",
     "@roo-code/types": "^1.40.0",
+    "@types/express": "^4.17.23",
+    "@types/lodash": "^4.17.20",
     "@types/react": "^18.2.0",
     "@types/react-dom": "^18.2.0",
     "@types/recharts": "^1.8.29",
+    "@types/uuid": "^10.0.0",
     "@types/ws": "^8.5.10",
+    "@vitejs/plugin-react": "^4.2.1",
     "bullmq": "^5.5.0",
     "dockerode": "^4.0.7",
+    "express": "^4.21.2",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.15.4",
+    "uuid": "^9.0.1",
     "ws": "^8.17.0",
     "zod": "^3.25.76"
   }

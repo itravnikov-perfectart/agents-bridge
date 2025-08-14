@@ -2,47 +2,46 @@ import packageJson from "../../package.json";
 import * as vscode from "vscode";
 
 export class Logger {
-  private readonly outputChannel: vscode.LogOutputChannel;
+  private readonly outputChannel: vscode.OutputChannel;
 
   constructor(channelName: string) {
-    this.outputChannel = vscode.window.createOutputChannel(channelName, {
-      log: true,
-    });
+    this.outputChannel = vscode.window.createOutputChannel(channelName);
   }
 
   /**
    * Log an info message
    */
   info(message: string, ...args: any[]): void {
-    this.outputChannel.info(message, ...args);
+    this.outputChannel.appendLine(`[INFO] ${message} ${args.join(' ')}`);
   }
 
   /**
    * Log a warning message
    */
   warn(message: string, ...args: any[]): void {
-    this.outputChannel.warn(message, ...args);
+    this.outputChannel.appendLine(`[WARN] ${message} ${args.join(' ')}`);
   }
 
   /**
    * Log an error message
    */
   error(message: string | Error, ...args: any[]): void {
-    this.outputChannel.error(message, ...args);
+    const msg = message instanceof Error ? message.message : message;
+    this.outputChannel.appendLine(`[ERROR] ${msg} ${args.join(' ')}`);
   }
 
   /**
    * Log a debug message
    */
   debug(message: string, ...args: any[]): void {
-    this.outputChannel.debug(message, ...args);
+    this.outputChannel.appendLine(`[DEBUG] ${message} ${args.join(' ')}`);
   }
 
   /**
    * Log a trace message
    */
   trace(message: string, ...args: any[]): void {
-    this.outputChannel.trace(message, ...args);
+    this.outputChannel.appendLine(`[TRACE] ${message} ${args.join(' ')}`);
   }
 
   /**

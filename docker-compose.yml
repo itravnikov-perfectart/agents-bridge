@@ -8,32 +8,17 @@ services:
     volumes:
       - redis_data:/data
 
-  wq-maestro:
-    build: .
-    ports:
-      - "8080:8080"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - redis
-    environment:
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-
-  wq-maestro-test:
-    build: .
-    ports:
-      - "8081:8081"
-    volumes:
-      - /var/run/docker.sock:/var/run/docker.sock
-    depends_on:
-      - redis
-    environment:
-      - NODE_ENV=test
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      - WS_PORT=8081
-    command: ["pnpm", "run", "test"]
+  # wq-maestro:
+  #   build: .
+  #   ports:
+  #     - "3000:3000"
+  #   volumes:
+  #     - /var/run/docker.sock:/var/run/docker.sock
+  #   depends_on:
+  #     - redis
+  #   environment:
+  #     - REDIS_HOST=redis
+  #     - REDIS_PORT=6379
 
 volumes:
   redis_data:

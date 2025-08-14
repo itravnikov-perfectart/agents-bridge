@@ -1,27 +1,50 @@
 import * as vscode from "vscode";
+import * as path from "path";
 import { logger } from "./utils/logger";
-import { ExtensionController } from "./core/controller";
 import { getSystemInfo } from "./utils/systemInfo";
-import { readConfiguration } from "./utils/config";
 import { RooCodeEventName } from "@roo-code/types";
 import { TaskEvent } from "./server/types";
 
-let controller: ExtensionController;
+import { ControllerManager } from "./core/controller";
+
+let controllerManager = new ControllerManager();
 
 export async function activate(context: vscode.ExtensionContext) {
-  // Only show logger automatically in development mode
-  vscode.window.showInformationMessage('Agent Maestro extension activated!');
-  logger.info('Extension activated successfully');
-  const isDevMode = context.extensionMode === vscode.ExtensionMode.Development;
-  if (isDevMode) {
-    logger.show();
+  process.on('unhandledRejection', (error) => {
+  vscode.window.showErrorMessage(`Unhandled error: ${error}`);
+});
+  // Debug activation flow
+  logger.debug('Extension activation started agent maestro');
+
+  // Show activation message after a brief delay when VS Code is focused
+   try {
+    // Пробуем показать сразу
+    vscode.window.showInformationMessage('Agent Maestro extension activated!');
+  } catch (err) {
+    setTimeout(async () => {
+      vscode.window.showInformationMessage('Agent Maestro extension activated!');
+    }, 1000);
   }
 
-  // Initialize the extension controller
-  controller = new ExtensionController();
-
+  logger.info('Extension activated successfully agent maestro');
+      
+  // Initialize the extension controller with Redis config
+  const redisConfig = {
+    host: process.env.REDIS_HOST || 'localhost',
+    port: parseInt(process.env.REDIS_PORT || '6379')
+  };
+  
+  // Initialize with either VSCode workspace or empty path
+  const initialWorkspacePath = vscode.workspace.workspaceFolders?.[0]?.uri?.path || '';
+  const defaultController = controllerManager.createController(
+    'default',
+    redisConfig,
+    initialWorkspacePath
+  );
+  
+  logger.debug('agent maestro: controllerManager', defaultController, ":initialWorkspacePath:", initialWorkspacePath);
   try {
-    await controller.initialize();
+    await defaultController.initialize();
   } catch (error) {
     logger.error("Failed to initialize extension controller:", error);
     vscode.window.showErrorMessage(
@@ -29,18 +52,93 @@ export async function activate(context: vscode.ExtensionContext) {
     );
   }
 
-  // Get configuration
-  const config = readConfiguration();
-
   try {
     // Register commands
     const disposables = [
-      vscode.commands.registerCommand("agents-bridge.helloWorld", () => {
+      vscode.commands.registerCommand("agents-bridge.helloWorld", async () => {
+        logger.debug('Hello World from agents-bridge!');
         vscode.window.showInformationMessage("Hello World from agents-bridge!");
+        logger.debug('Hello World from agents-bridge!');
+      }),
+      vscode.commands.registerCommand("agent-maestro.createController", async () => {
+        try {
+          const id = await vscode.window.showInputBox({
+            prompt: 'Enter controller ID',
+            placeHolder: 'controller-id'
+          });
+          if (!id) {
+            return;
+          }  
+          
+          const path = await vscode.window.showInputBox({
+            prompt: 'Enter workspace path',
+            placeHolder: '/path/to/workspace'
+          });
+          if (!path) {
+            return;
+          }
+          logger.debug('Hello World from agents-bridge!::', path);
+          const controller = controllerManager.createController(id, redisConfig, path);
+          await controller.initialize();
+          vscode.window.showInformationMessage(`Created controller ${id} for workspace ${path}`);
+        } catch (error) {
+          logger.error("Error creating controller:", error);
+          vscode.window.showErrorMessage(
+            `Failed to create controller: ${(error as Error).message}`
+          );
+        }
+      }),
+      
+      vscode.commands.registerCommand("agent-maestro.switchController", async () => {
+        try {
+          const controllers = controllerManager.getControllerIds();
+          if (controllers.length === 0) {
+            throw new Error("No controllers available");
+          }
+          
+          const selected = await vscode.window.showQuickPick(controllers, {
+            placeHolder: 'Select controller to activate'
+          });
+          if (selected && controllerManager.setActiveController(selected)) {
+            vscode.window.showInformationMessage(`Active controller set to: ${selected}`);
+          }
+        } catch (error) {
+          logger.error("Error switching controllers:", error);
+          vscode.window.showErrorMessage(
+            `Failed to switch controller: ${(error as Error).message}`
+          );
+        }
+      }),
+      
+      vscode.commands.registerCommand("agent-maestro.setWorkspacePath", async () => {
+        try {
+          const controller = controllerManager.getActiveController();
+          if (!controller) {
+            throw new Error("No active controller");
+          }
+          
+          const path = await vscode.window.showInputBox({
+            prompt: 'Enter workspace path manually',
+            placeHolder: '/path/to/workspace'
+          });
+          if (path) {
+            controller.setWorkspacePath(path);
+            vscode.window.showInformationMessage(`Workspace path set to: ${path}`);
+          }
+        } catch (error) {
+          logger.error("Error setting workspace path:", error);
+          vscode.window.showErrorMessage(
+            `Failed to set workspace path: ${(error as Error).message}`
+          );
+        }
       }),
       vscode.commands.registerCommand("agent-maestro.getStatus", () => {
         try {
-          const systemInfo = getSystemInfo(controller);
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const systemInfo = getSystemInfo(activeController);
           vscode.window.showInformationMessage(
             JSON.stringify(systemInfo, null, 2),
           );
@@ -53,10 +151,18 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
       vscode.commands.registerCommand("agent-maestro.sendToRoo", async () => {
         try {
-          const adapter = controller.getRooAdapter();
+          const controller = controllerManager.getActiveController();
+          if (!controller) {
+            throw new Error("No active controller");
+          }
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const adapter = activeController.getRooAdapter();
           if (!adapter) {
             throw new Error("No active RooCode adapter found");
-          }
+          };
 
           // Сначала запрашиваем сообщение
           const message = await vscode.window.showInputBox({
@@ -64,7 +170,9 @@ export async function activate(context: vscode.ExtensionContext) {
             placeHolder: 'Ваше сообщение...'
           });
 
-          if (!message) return; // Отмена ввода
+          if (!message) {
+            return; // Отмена ввода
+          }
 
           for await (const event of adapter.sendMessage(message)) {
             if (event.name === RooCodeEventName.Message) {
@@ -76,7 +184,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 );
               }
             }
-          }
+          };
         } catch (error) {
           logger.error("Error sending message to RooCode:", error);
           vscode.window.showErrorMessage(
@@ -84,32 +192,17 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
       }),
-      vscode.commands.registerCommand("agent-maestro.startProcess", async (command: string) => {
-        try {
-          const process = controller.wqMaestroAdapter.startProcess({
-            command: command
-          });
-          
-          for await (const event of process) {
-            if (event.type === "processOutput") {
-              vscode.window.showInformationMessage(
-                `Process output: ${event.data}`
-              );
-            }
-          }
-        } catch (error) {
-          logger.error("Error starting process:", error);
-          vscode.window.showErrorMessage(
-            `Failed to start process: ${(error as Error).message}`,
-          );
-        }
-      }),
+
       vscode.commands.registerCommand("agent-maestro.executeRooResult", async (result: string) => {
         try {
-          const adapter = controller.getRooAdapter();
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const adapter = activeController.getRooAdapter();
           if (!adapter) {
             throw new Error("No active RooCode adapter found");
-          }
+          };
           // Use existing sendMessage functionality
           for await (const event of adapter.sendMessage(result)) {
             if (event.name === RooCodeEventName.Message) {
@@ -120,7 +213,7 @@ export async function activate(context: vscode.ExtensionContext) {
                 );
               }
             }
-          }
+          };
           vscode.window.showInformationMessage("RooCode result processed successfully");
         } catch (error) {
           logger.error("Error executing RooCode result:", error);
@@ -131,10 +224,14 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
       vscode.commands.registerCommand("agent-maestro.saveRooCodeSettings", async () => {
         try {
-          const adapter = controller.getRooAdapter();
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const adapter = activeController.getRooAdapter();
           if (!adapter) {
             throw new Error("No active RooCode adapter found");
-          }
+          };
           
           // Получить текущие настройки
           const currentConfig = adapter.getConfiguration();
@@ -156,24 +253,43 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
       }),
-      vscode.commands.registerCommand("agent-maestro.listProcesses", async () => {
-        try {
-          const processes = await controller.wqMaestroAdapter.listProcesses();
-          vscode.window.showInformationMessage(
-            `Active processes: ${processes.join(", ")}`
-          );
-        } catch (error) {
-          logger.error("Error listing processes:", error);
-          vscode.window.showErrorMessage(
-            `Failed to list processes: ${(error as Error).message}`,
-          );
-        }
-      }),
+      vscode.commands.registerCommand("agent-maestro.showUI", () => {
+        const panel = vscode.window.createWebviewPanel(
+          'agentMaestroUI',
+          'Agent Maestro',
+          vscode.ViewColumn.One,
+          {
+            enableScripts: true,
+            retainContextWhenHidden: true
+          }
+        );
+
+        // Get path to compiled UI files
+        const scriptPath = vscode.Uri.file(
+          path.join(context.extensionPath, 'dist/ui/index.js')
+        );
+        const scriptUri = panel.webview.asWebviewUri(scriptPath);
+
+        panel.webview.html = `
+          <!DOCTYPE html>
+          <html lang="en">
+          <head>
+            <meta charset="UTF-8">
+            <meta name="viewport" content="width=device-width, initial-scale=1.0">
+            <title>Agent Maestro</title>
+          </head>
+          <body>
+            <div id="root"></div>
+            <script src="${scriptUri}"></script>
+          </body>
+          </html>
+        `;
+      })
     ];
 
     context.subscriptions.push(...disposables);
 
-    return controller;
+    return controllerManager.getActiveController();
   } catch (error) {
     logger.error("Error during extension activation:", error);
     vscode.window.showErrorMessage(
@@ -186,10 +302,8 @@ export async function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated
 export async function deactivate() {
   try {
-    if (controller) {
-      await controller.dispose();
-      logger.info("Extension controller disposed");
-    }
+    await controllerManager.dispose();
+    logger.info("All controllers disposed");
   } catch (error) {
     logger.error("Error during deactivation:", error);
   }

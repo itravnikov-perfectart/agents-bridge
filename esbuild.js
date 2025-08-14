@@ -23,6 +23,21 @@ const esbuildProblemMatcherPlugin = {
 	},
 };
 
+/**
+ * @type {import('esbuild').Plugin}
+ */
+const ignoreCpuFeaturesPlugin = {
+	name: 'ignore-cpu-features',
+	setup(build) {
+		build.onResolve({ filter: /cpu-features/ }, () => {
+			return { path: 'cpu-features', namespace: 'cpu-features' };
+		});
+		build.onLoad({ filter: /.*/, namespace: 'cpu-features' }, () => {
+			return { contents: 'export default {}' };
+		});
+	},
+};
+
 async function main() {
 	const ctx = await esbuild.context({
 		entryPoints: [
@@ -40,6 +55,7 @@ async function main() {
 		plugins: [
 			/* add to the end of plugins array */
 			esbuildProblemMatcherPlugin,
+			ignoreCpuFeaturesPlugin,
 		],
 	});
 	if (watch) {

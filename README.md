@@ -12,15 +12,6 @@
 
 ```typescript
 // Basic setup
-const maestro = new WQMaestroService(
-  8080, // WebSocket port
-  { 
-    host: 'redis-host',
-    port: 6379,
-    password: 'secret',
-    db: 0
-  }
-);
 
 // Start a process
 const process = await maestro.startProcess({
@@ -37,10 +28,8 @@ for await (const event of process) {
 
 ## Components
 
-- `WQMaestroService`: Core orchestration service
 - `WQMaestroUI`: React-based monitoring interface
 - `WebSocket`: Real-time instance communication
-- `WQMaestroAdapter`: VS Code extension integration
 
 ## Requirements
 

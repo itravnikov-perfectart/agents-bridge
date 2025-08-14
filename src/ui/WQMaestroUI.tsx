@@ -15,12 +15,14 @@ interface WQMaestroUIProps {
   processes: ProcessStatus[];
   onStartProcess: (options: ProcessOptions) => Promise<void>;
   onStopProcess: (processId: string) => Promise<void>;
+  onStartAgent: (port: number, image: string) => Promise<void>;
 }
 
 export const WQMaestroUI = ({
   processes,
   onStartProcess,
-  onStopProcess
+  onStopProcess,
+  onStartAgent
 }: WQMaestroUIProps): JSX.Element => {
   return (
     <div className="wq-maestro-ui">
@@ -70,6 +72,32 @@ export const WQMaestroUI = ({
             <input name="image" />
           </div>
           <button type="submit">Start Process</button>
+        </form>
+        
+        <h3>Start New Agent</h3>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const form = e.currentTarget as HTMLFormElement;
+          try {
+            await onStartAgent(
+              parseInt((form.elements.namedItem('agentPort') as HTMLInputElement).value),
+              (form.elements.namedItem('agentImage') as HTMLInputElement).value
+            );
+            form.reset();
+          } catch (error) {
+            console.error('Failed to start agent:', error);
+            alert('Failed to start agent. Please check your inputs.');
+          }
+        }}>
+          <div>
+            <label>Agent Port:</label>
+            <input name="agentPort" type="number" required />
+          </div>
+          <div>
+            <label>Docker Image:</label>
+            <input name="agentImage" required />
+          </div>
+          <button type="submit">Start Agent</button>
         </form>
       </div>
 

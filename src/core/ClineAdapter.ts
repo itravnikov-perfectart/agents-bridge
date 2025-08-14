@@ -12,8 +12,15 @@ export interface ClineTaskOptions {
  * Handles Cline-specific logic including test mode setup and API interactions
  */
 export class ClineAdapter extends ExtensionBaseAdapter<ClineAPI> {
+  public lastHeartbeat = 0;
+  public containerId?: string;
+
   constructor() {
     super();
+    // Setup periodic heartbeat
+    setInterval(() => {
+      this.lastHeartbeat = Date.now();
+    }, 5000); // Update heartbeat every 5 seconds
   }
 
   /**

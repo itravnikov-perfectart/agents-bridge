@@ -1,23 +1,27 @@
-# Базовый образ
+# Base image
 FROM node:20-alpine
 
-# Установка зависимостей
+# Install dependencies
 RUN apk add --no-cache docker-cli
 
-# Рабочая директория
+# Set working directory
 WORKDIR /app
 
-# Копирование файлов
+# Copy package files
 COPY package.json pnpm-lock.yaml ./
-RUN npm install -g pnpm && pnpm install
 
+# Install pnpm and dependencies
+RUN npm install -g pnpm
+RUN pnpm install
+
+# Copy source files
 COPY . .
 
-# Сборка проекта
-RUN pnpm run compile
+# Build the UI
+RUN pnpm run build:ui
 
-# Порт для WebSocket
-EXPOSE 8080
+# Expose ports
+EXPOSE 3000
 
-# Запуск сервиса
-CMD ["pnpm", "run", "start:service"]
+# Start UI server
+CMD ["pnpm", "run", "start:ui"]
