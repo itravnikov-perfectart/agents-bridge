@@ -2,6 +2,42 @@ import * as React from 'react';
 import { ProcessStatus } from '../server/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
+const styles = `
+  .agent-maestro-ui {
+    font-family: var(--vscode-font-family);
+    padding: 10px;
+  }
+  .controllers-list {
+    margin-bottom: 20px;
+  }
+  .controller {
+    padding: 8px;
+    border-bottom: 1px solid var(--vscode-editorWidget-border);
+    margin-bottom: 8px;
+  }
+  .controller.active {
+    background-color: var(--vscode-list-activeSelectionBackground);
+  }
+  .workspace-path {
+    font-size: 0.8em;
+    color: var(--vscode-descriptionForeground);
+    word-break: break-all;
+    margin: 4px 0;
+  }
+  button {
+    margin-right: 8px;
+    padding: 4px 8px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: none;
+    border-radius: 2px;
+    cursor: pointer;
+  }
+  button:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+`;
+
 interface ProcessOptions {
   command: string;
   args?: string[];
@@ -16,18 +52,51 @@ interface WQMaestroUIProps {
   onStartProcess: (options: ProcessOptions) => Promise<void>;
   onStopProcess: (processId: string) => Promise<void>;
   onStartAgent: (port: number, image: string) => Promise<void>;
+  onSendToRoo: (message: string) => Promise<string>;
+  executionOutput: string;
 }
 
 export const WQMaestroUI = ({
   processes,
   onStartProcess,
   onStopProcess,
-  onStartAgent
+  onStartAgent,
+  onSendToRoo,
+  executionOutput
 }: WQMaestroUIProps): JSX.Element => {
   return (
-    <div className="wq-maestro-ui">
+    <div className="agent-maestro-ui">
+      <style>{styles}</style>
       <h2>WQ Maestro Processes</h2>
       
+      <div className="output-section">
+        <h3>Execution Output</h3>
+        <pre>{executionOutput}</pre>
+      </div>
+
+      <div className="process-form">
+        <h3>Send Message to RooCode</h3>
+        <form onSubmit={async (e) => {
+          e.preventDefault();
+          const form = e.currentTarget as HTMLFormElement;
+          const message = (form.elements.namedItem('rooMessage') as HTMLInputElement).value;
+          if (message) {
+            try {
+              await onSendToRoo(message);
+              form.reset();
+            } catch (error) {
+              console.error('Failed to send message:', error);
+            }
+          }
+        }}>
+          <div>
+            <label>Message:</label>
+            <input name="rooMessage" required />
+          </div>
+          <button type="submit">Send</button>
+        </form>
+      </div>
+
       <div className="process-form">
         <h3>Start New Process</h3>
         <form onSubmit={async (e) => {

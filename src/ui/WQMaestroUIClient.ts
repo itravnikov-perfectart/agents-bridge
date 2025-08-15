@@ -168,4 +168,39 @@ export class WQMaestroUIClient {
       }));
     });
   }
+
+  public async sendToRoo(message: string): Promise<string> {
+    return new Promise((resolve, reject) => {
+      if (!this.connected) {
+        reject(new Error('Not connected to service'));
+        return;
+      }
+
+      const requestId = Math.random().toString(36).substring(2, 9);
+      
+      const handler = (event: MessageEvent) => {
+        try {
+          const data = JSON.parse(event.data);
+          if (data.requestId === requestId) {
+            this.ws.removeEventListener('message', handler);
+            if (data.error) {
+              reject(new Error(data.error));
+            } else {
+              resolve(data.result);
+            }
+          }
+        } catch (err) {
+          logger.error('Error parsing response', err);
+          reject(err);
+        }
+      };
+
+      this.ws.addEventListener('message', handler);
+      this.ws.send(JSON.stringify({
+        type: 'sendToRoo',
+        requestId,
+        message
+      }));
+    });
+}
 }

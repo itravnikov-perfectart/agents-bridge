@@ -1,9 +1,9 @@
 import { EventEmitter } from "events";
+import * as path from "path";
 import * as vscode from "vscode";
 import { logger } from "../utils/logger";
-import { ClineAdapter } from "./ClineAdapter";
 import { RooCodeAdapter } from "./RooCodeAdapter";
-import { Queue } from "bullmq";
+import { Queue, Job, QueueEvents } from "bullmq";
 import { RedisConfig } from "../server/worker.config";
 import Docker from "dockerode";
 import { createWebSocketServer, WebSocketServerInstance } from "../server/websocket.config";
@@ -20,7 +20,6 @@ import { AgentStatus } from "./types";
  * Provides unified API access and can be used by both VSCode extension and local server
  */
 export class ExtensionController extends EventEmitter {
-  public readonly clineAdapter: ClineAdapter;
   public readonly rooAdapterMap: Map<string, RooCodeAdapter> = new Map();
   private currentConfig: AgentMaestroConfiguration = readConfiguration();
   public isInitialized = false;
@@ -30,14 +29,13 @@ export class ExtensionController extends EventEmitter {
   private docker: Docker;
   private lastAgentIndex = 0;
   private webSocketServer?: WebSocketServerInstance;
-
+  private activeTasks: Map<string, {workspacePath: string, agentId: string}> = new Map();
   private workspacePath: string;
 
   constructor(redisConfig: RedisConfig, workspacePath?: string) {
     super();
     this.redisConfig = redisConfig;
     this.docker = new Docker();
-    this.clineAdapter = new ClineAdapter();
     this.workspacePath = workspacePath || '';
     this.initializeRooAdapters(this.currentConfig);
   }
@@ -98,9 +96,6 @@ export class ExtensionController extends EventEmitter {
       return;
     }
     try {
-    // Initialize ClineAdapter
-    await this.clineAdapter.initialize();
-
     // Initialize all RooCode adapters
     for (const [id, adapter] of this.rooAdapterMap) {
       await adapter.initialize();
@@ -109,7 +104,6 @@ export class ExtensionController extends EventEmitter {
 
     // Check if at least one adapter is active
     const hasActiveAdapter =
-      this.clineAdapter.isActive ||
       Array.from(this.rooAdapterMap.values()).some(
         (adapter) => adapter.isActive,
       );
@@ -126,7 +120,7 @@ export class ExtensionController extends EventEmitter {
       pingInterval: this.currentConfig.wsPingInterval
     });
 
-    // Initialize task queue
+    // Initialize task queue and events
     this.taskQueue = new Queue('agent-tasks', {
       connection: this.redisConfig,
       defaultJobOptions: {
@@ -193,21 +187,34 @@ export class ExtensionController extends EventEmitter {
    * Setup message handlers for RooCode adapter
    */
   private setupRooMessageHandlers(id: string, adapter: RooCodeAdapter): void {
-    const disposable = vscode.commands.registerCommand(
-      `agent-maestro.executeRooResult-${id}`,
-      async (result: string) => {
-        try {
-          await this.executeRooResult(result);
-        } catch (error) {
-          logger.error(`Error executing RooCode result: ${error}`);
-          vscode.window.showErrorMessage(
-            `Failed to execute RooCode result: ${error}`,
-          );
-        }
-      }
-    );
+    const commandName = `agent-maestro.executeRooResult-${id}`;
+    
+    // First remove existing command if any
+    const existing = this.activeTaskListeners.get(id);
+    if (existing) {
+      existing.dispose();
+    }
 
-    this.activeTaskListeners.set(id, disposable);
+    // Check if command already exists before registering
+    const commands = vscode.commands.getCommands();
+    commands.then(registeredCommands => {
+      if (!registeredCommands.includes(commandName)) {
+        const disposable = vscode.commands.registerCommand(
+          commandName,
+          async (result: string) => {
+            try {
+              await this.executeRooResult(result);
+            } catch (error) {
+              logger.error(`Error executing RooCode result: ${error}`);
+              vscode.window.showErrorMessage(
+                `Failed to execute RooCode result: ${error}`,
+              );
+            }
+          }
+        );
+        this.activeTaskListeners.set(id, disposable);
+      }
+    });
   }
 
   /**
@@ -219,6 +226,20 @@ export class ExtensionController extends EventEmitter {
       try {
         const command = JSON.parse(result);
         if (command.type === 'execute') {
+          // Execute in controller's workspace context
+          const workspaceFolders = vscode.workspace.workspaceFolders;
+          const targetUri = vscode.Uri.file(this.workspacePath);
+          
+          // Find or add workspace folder
+          let targetFolder = workspaceFolders?.find(f => f.uri.fsPath === this.workspacePath);
+          if (!targetFolder && this.workspacePath) {
+              vscode.workspace.updateWorkspaceFolders(0,0, {
+                uri: targetUri, name: path.dirname(this.workspacePath)
+              });
+            targetFolder = vscode.workspace.workspaceFolders?.find(f => f.uri.fsPath === this.workspacePath);
+          }
+
+          // Execute command in target workspace
           await vscode.commands.executeCommand(command.command, ...(command.args || []));
           return;
         }
@@ -226,7 +247,7 @@ export class ExtensionController extends EventEmitter {
         // Not JSON, continue with raw execution
       }
 
-      // Fallback to executing as raw command
+      // Fallback to executing as raw command in controller's workspace
       await vscode.commands.executeCommand(result);
     } catch (error) {
       logger.error(`Error executing RooCode result: ${result}`, error);
@@ -243,12 +264,6 @@ export class ExtensionController extends EventEmitter {
       ExtensionStatus
     >;
 
-    // Cline status
-    status["cline"] = {
-      isInstalled: this.clineAdapter.isInstalled(),
-      isActive: this.clineAdapter.isActive,
-      version: this.clineAdapter.getVersion(),
-    };
 
     // Roo variants status
     for (const [extensionId, adapter] of this.rooAdapterMap) {
@@ -280,15 +295,6 @@ export class ExtensionController extends EventEmitter {
       };
     }
 
-    // Check Cline adapter if no RooCode match
-    if (agentId === 'cline') {
-      return {
-        state: this.clineAdapter.isActive ? AgentStatus.RUNNING : AgentStatus.STOPPED,
-        lastHeartbeat: this.clineAdapter.lastHeartbeat || 0,
-        containerId: this.clineAdapter.containerId
-      };
-    }
-
     return undefined;
   }
 
@@ -305,6 +311,11 @@ export class ExtensionController extends EventEmitter {
     targetAgentId?: string;
     workspacePath?: string; // Path to workspace directory
   }): Promise<{taskId: string, agentId: string}> {
+    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
+    const workspacePath = task.workspacePath || this.workspacePath;
+    
+    // Use controller's workspace path if not specified
+    task.workspacePath = workspacePath;
     if (!this.taskQueue) {
       throw new Error('Task queue not initialized');
     }
@@ -335,6 +346,24 @@ export class ExtensionController extends EventEmitter {
       });
     }
 
+    // Track active task
+    this.activeTasks.set(taskId, {
+      workspacePath,
+      agentId
+    });
+
+    // Create queue events listener
+    const queueEvents = new QueueEvents('agent-tasks', {
+      connection: this.redisConfig
+    });
+    
+    // Listen for task completion with proper typing
+    queueEvents.on('completed', ({ jobId }: { jobId: string }) => {
+      if (jobId === taskId) {
+        this.activeTasks.delete(taskId);
+      }
+    });
+    
     return {
       taskId: job.id,
       agentId
@@ -394,9 +423,12 @@ export class ExtensionController extends EventEmitter {
     this.removeAllListeners();
     this.isInitialized = false;
 
-    await this.clineAdapter.dispose();
-
-    // Dispose all RooCode adapters
+    // Dispose all RooCode adapters and command listeners
+    for (const [id, listener] of this.activeTaskListeners) {
+      listener.dispose();
+    }
+    this.activeTaskListeners.clear();
+    
     for (const adapter of this.rooAdapterMap.values()) {
       await adapter.dispose();
     }
@@ -417,6 +449,20 @@ export class ExtensionController extends EventEmitter {
   public getWorkspacePath(): string {
     return this.workspacePath;
   }
+
+  /**
+   * Check if controller is busy (has active tasks)
+   */
+  public isBusy(): boolean {
+    return this.activeTasks.size > 0;
+  }
+
+  /**
+   * Get count of active tasks
+   */
+  public getActiveTaskCount(): number {
+    return this.activeTasks.size;
+  }
 }
 
 /**
@@ -426,13 +472,22 @@ export class ControllerManager {
   private controllers: Map<string, ExtensionController> = new Map();
   private activeControllerId?: string;
 
+  constructor(private readonly context?: vscode.ExtensionContext) {}
+
   /**
    * Create a new controller with specified workspace
    */
   createController(id: string, redisConfig: RedisConfig, workspacePath: string): ExtensionController {
+    if (this.controllers.has(id)) {
+      logger.warn(`Controller ${id} already exists - recreating`);
+      this.controllers.get(id)?.dispose();
+    }
+
     const controller = new ExtensionController(redisConfig, workspacePath);
     this.controllers.set(id, controller);
     this.activeControllerId = id;
+    
+    logger.info(`Created new controller ${id} for workspace ${workspacePath}`);
     return controller;
   }
 
@@ -454,11 +509,41 @@ export class ControllerManager {
    * Set active controller
    */
   setActiveController(id: string): boolean {
-    if (this.controllers.has(id)) {
-      this.activeControllerId = id;
-      return true;
+    if (!this.controllers.has(id)) {
+      logger.warn(`Failed to switch to controller ${id} - not found`);
+      return false;
     }
-    return false;
+
+    const prevController = this.activeControllerId;
+    this.activeControllerId = id;
+    
+    // Log controller switch
+    logger.info(`Switched controller from ${prevController || 'none'} to ${id}`);
+    
+    // Update workspace context without removing other controllers
+    const controller = this.controllers.get(id)!;
+    const workspacePath = controller.getWorkspacePath();
+    
+    if (workspacePath) {
+      const workspaceFolders = vscode.workspace.workspaceFolders || [];
+      const targetUri = vscode.Uri.file(workspacePath);
+      
+      // Only add workspace if not already present
+      if (!workspaceFolders.some(f => f.uri.fsPath === workspacePath)) {
+        vscode.workspace.updateWorkspaceFolders(
+          workspaceFolders.length, // Add at the end
+          0, // Don't remove any
+          { uri: targetUri, name: path.basename(workspacePath) }
+        );
+      }
+    }
+
+    if (this.context) {
+      this.context.globalState.update('lastActiveController', id);
+    }
+    
+    // Ensure all controllers remain available
+    return true;
   }
 
   /**

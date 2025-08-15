@@ -1,4 +1,6 @@
 import { logger } from "../utils/logger";
+import * as vscode from "vscode";
+import * as path from "path";
 import {
   RooCodeAPI,
   RooCodeSettings,
@@ -20,6 +22,7 @@ export interface RooCodeMessageOptions {
 export interface RooCodeTaskOptions extends RooCodeMessageOptions {
   configuration?: RooCodeSettings;
   newTab?: boolean;
+  workspacePath?: string;
 }
 
 export interface SendMessageOptions {
@@ -314,6 +317,26 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     logger.info("Starting new RooCode task");
 
     try {
+      // Switch workspace if specified
+      if (options.workspacePath) {
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const targetUri = vscode.Uri.file(options.workspacePath);
+        
+        if (!workspaceFolders.some(f => f.uri.fsPath === options.workspacePath)) {
+          try {
+            await vscode.workspace.updateWorkspaceFolders(0, 0, {
+              uri: targetUri,
+              name: path.basename(options.workspacePath)
+            });
+            // Wait for workspace to be ready
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (error) {
+            logger.error(`Failed to update workspace: ${error}`);
+            throw error;
+          }
+        }
+      }
+
       // Start the task
       const taskId = await this.api.startNewTask(options);
 
@@ -428,7 +451,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async *sendMessage(
     message?: string,
     images?: string[],
-    options?: SendMessageOptions,
+    options?: SendMessageOptions & { workspacePath?: string },
   ): AsyncGenerator<TaskEvent, void, unknown> {
     if (!this.api) {
       throw new Error("RooCode API not available");
@@ -439,8 +462,53 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     try {
       const { taskId } = options || {};
 
-      // Send the message
-      await this.api.sendMessage(message, images);
+      // Switch workspace if specified
+      if (options?.workspacePath) {
+        const workspaceFolders = vscode.workspace.workspaceFolders || [];
+        const targetUri = vscode.Uri.file(options.workspacePath);
+        
+        // Check if workspace already added
+        if (!workspaceFolders.some(f => f.uri.fsPath === options.workspacePath)) {
+          try {
+            vscode.workspace.updateWorkspaceFolders(0, 0, {
+              uri: targetUri,
+              name: path.dirname(options.workspacePath)
+            });
+            // Wait for workspace to be ready
+            await new Promise(resolve => setTimeout(resolve, 500));
+          } catch (error) {
+            logger.error(`Failed to update workspace: ${error}`);
+            throw error;
+          }
+        }
+      }
+
+      // Verify API is ready before sending
+      if (!this.api.isReady()) {
+        throw new Error("RooCode API is not ready");
+      }
+
+      // Send the message with retry logic
+      let attempts = 0;
+      const maxAttempts = 3;
+      let lastError;
+
+      while (attempts < maxAttempts) {
+        try {
+          await this.api.sendMessage(message, images);
+          break;
+        } catch (error) {
+          lastError = error;
+          attempts++;
+          if (attempts < maxAttempts) {
+            await new Promise(resolve => setTimeout(resolve, 300));
+          }
+        }
+      }
+
+      if (attempts === maxAttempts) {
+        throw lastError || new Error("Failed to send message after retries");
+      }
 
       // If taskId is provided, create event stream for that specific task
       if (taskId) {

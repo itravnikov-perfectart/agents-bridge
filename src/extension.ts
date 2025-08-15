@@ -9,23 +9,69 @@ import { ControllerManager } from "./core/controller";
 
 let controllerManager = new ControllerManager();
 
+class ControllerTreeItem extends vscode.TreeItem {
+  constructor(
+    public readonly controllerId: string,
+    public readonly collapsibleState: vscode.TreeItemCollapsibleState
+  ) {
+    super(controllerId, collapsibleState);
+    this.tooltip = controllerId;
+    this.contextValue = "controller";
+  }
+}
+
+class ControllerTreeProvider implements vscode.TreeDataProvider<ControllerTreeItem> {
+  private _onDidChangeTreeData = new vscode.EventEmitter<ControllerTreeItem | undefined>();
+  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
+
+  refresh(): void {
+    this._onDidChangeTreeData.fire(undefined);
+  }
+
+  getTreeItem(element: ControllerTreeItem): vscode.TreeItem {
+    return element;
+  }
+
+  getChildren(element?: ControllerTreeItem): Thenable<ControllerTreeItem[]> {
+    if (element) {
+      return Promise.resolve([]);
+    }
+    const controllers = controllerManager.getControllerIds();
+    return Promise.resolve(
+      controllers.map(id => new ControllerTreeItem(
+        id,
+        vscode.TreeItemCollapsibleState.None
+      ))
+    );
+  }
+}
+
 export async function activate(context: vscode.ExtensionContext) {
-  process.on('unhandledRejection', (error) => {
-  vscode.window.showErrorMessage(`Unhandled error: ${error}`);
-});
   // Debug activation flow
   logger.debug('Extension activation started agent maestro');
 
-  // Show activation message after a brief delay when VS Code is focused
-   try {
-    // Пробуем показать сразу
-    vscode.window.showInformationMessage('Agent Maestro extension activated!');
-  } catch (err) {
-    setTimeout(async () => {
-      vscode.window.showInformationMessage('Agent Maestro extension activated!');
-    }, 1000);
-  }
+  // Register tree view
+  const treeProvider = new ControllerTreeProvider();
+  context.subscriptions.push(
+    vscode.window.registerTreeDataProvider(
+      'agentMaestroControllers',
+      treeProvider
+    )
+  );
 
+  // Register activity bar icon
+  const statusBarItem = vscode.window.createStatusBarItem(
+    vscode.StatusBarAlignment.Right,
+    100
+  );
+  statusBarItem.text = "$(server) Agent Maestro";
+  statusBarItem.tooltip = "Manage Agent Maestro Controllers";
+  statusBarItem.command = "agent-maestro.showControllers";
+  statusBarItem.show();
+  context.subscriptions.push(statusBarItem);
+
+  // Show activation message
+  vscode.window.showInformationMessage('Agent Maestro extension activated!');
   logger.info('Extension activated successfully agent maestro');
       
   // Initialize the extension controller with Redis config
@@ -56,9 +102,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Register commands
     const disposables = [
       vscode.commands.registerCommand("agents-bridge.helloWorld", async () => {
-        logger.debug('Hello World from agents-bridge!');
         vscode.window.showInformationMessage("Hello World from agents-bridge!");
-        logger.debug('Hello World from agents-bridge!');
       }),
       vscode.commands.registerCommand("agent-maestro.createController", async () => {
         try {
@@ -100,6 +144,7 @@ export async function activate(context: vscode.ExtensionContext) {
             placeHolder: 'Select controller to activate'
           });
           if (selected && controllerManager.setActiveController(selected)) {
+            context.globalState.update('lastActiveController', selected);
             vscode.window.showInformationMessage(`Active controller set to: ${selected}`);
           }
         } catch (error) {
@@ -155,6 +200,7 @@ export async function activate(context: vscode.ExtensionContext) {
           if (!controller) {
             throw new Error("No active controller");
           }
+
           const activeController = controllerManager.getActiveController();
           if (!activeController) {
             throw new Error("No active controller");
@@ -174,10 +220,50 @@ export async function activate(context: vscode.ExtensionContext) {
             return; // Отмена ввода
           }
 
-          for await (const event of adapter.sendMessage(message)) {
+          // Получаем workspacePath из активного контроллера
+          const workspacePath = activeController.getWorkspacePath();
+          
+          // Генерируем уникальный taskId для сообщения
+          // Создаем уникальный taskId с привязкой к workspace
+          const taskId = `msg-${Date.now()}-${workspacePath.replace(/\W/g, '-')}-${Math.random().toString(36).substring(2, 4)}`;
+          
+          // Логируем создание задачи
+          logger.debug(`Creating task ${taskId} for workspace ${workspacePath}`);
+          
+          // Создаем и настраиваем задачу
+          const taskOptions = {
+            workspacePath,
+            taskId,
+            metadata: {
+              source: 'vscode-extension',
+              controllerId: activeController.getWorkspacePath()
+            }
+          };
+          
+          // Создаем новую задачу и логируем
+          await adapter.startNewTask(taskOptions);
+          logger.debug(`Task ${taskId} created successfully`);
+          
+          // Создаем output channel для задачи
+          const outputChannel = vscode.window.createOutputChannel(`Task ${taskId}`);
+          outputChannel.show();
+          outputChannel.appendLine(`Starting task in workspace: ${workspacePath}`);
+          outputChannel.appendLine(`Message: ${message}`);
+          
+          // Отправляем сообщение и обрабатываем события
+          for await (const event of adapter.sendMessage(message, undefined, {
+            taskId,
+            workspacePath
+          })) {
+            // Логируем все события в output
+            outputChannel.appendLine(`[${event.name}] ${JSON.stringify(event.data)}`);
             if (event.name === RooCodeEventName.Message) {
               const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
               if (messageEvent.data.message?.text) {
+                // Выводим в output канал
+                outputChannel.appendLine(`Result: ${messageEvent.data.message.text}`);
+                
+                // Выполняем результат
                 await vscode.commands.executeCommand(
                   "agent-maestro.executeRooResult",
                   messageEvent.data.message.text
@@ -253,10 +339,11 @@ export async function activate(context: vscode.ExtensionContext) {
           );
         }
       }),
-      vscode.commands.registerCommand("agent-maestro.showUI", () => {
+      vscode.commands.registerCommand("agent-maestro.showPanel", () => {
+        // Create and show panel
         const panel = vscode.window.createWebviewPanel(
-          'agentMaestroUI',
-          'Agent Maestro',
+          'agentMaestroPanel',
+          'Agent Maestro Controllers',
           vscode.ViewColumn.One,
           {
             enableScripts: true,
@@ -264,26 +351,126 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         );
 
-        // Get path to compiled UI files
-        const scriptPath = vscode.Uri.file(
-          path.join(context.extensionPath, 'dist/ui/index.js')
-        );
-        const scriptUri = panel.webview.asWebviewUri(scriptPath);
+        // Get all controllers with their workspace paths
+        const controllers = controllerManager.getControllerIds().map(id => ({
+          id,
+          workspace: controllerManager.getController(id)?.getWorkspacePath() || ''
+        }));
+        const activeControllerId = controllerManager.getActiveController()?.getWorkspacePath();
 
+        // Simple HTML for debugging
         panel.webview.html = `
           <!DOCTYPE html>
-          <html lang="en">
+          <html>
           <head>
-            <meta charset="UTF-8">
-            <meta name="viewport" content="width=device-width, initial-scale=1.0">
-            <title>Agent Maestro</title>
+            <style>
+              body {
+                font-family: var(--vscode-font-family);
+                padding: 20px;
+              }
+              .controller {
+                padding: 10px;
+                margin-bottom: 10px;
+                border: 1px solid var(--vscode-editorWidget-border);
+              }
+              .active {
+                background-color: var(--vscode-list-activeSelectionBackground);
+              }
+            </style>
           </head>
           <body>
-            <div id="root"></div>
-            <script src="${scriptUri}"></script>
+            <h2>Agent Maestro Controllers (Debug)</h2>
+            <div id="controllers">
+              ${controllers.map(ctrl => `
+                <div class="controller ${ctrl.id === activeControllerId ? 'active' : ''}">
+                  <div><strong>${ctrl.id}</strong></div>
+                  <div>${ctrl.workspace}</div>
+                  <button onclick="activateController('${ctrl.id}')">Activate</button>
+                  <button onclick="removeController('${ctrl.id}')">Remove</button>
+                </div>
+              `).join('')}
+            </div>
+
+            <script>
+              const vscode = acquireVsCodeApi();
+              function activateController(id) {
+                vscode.postMessage({ command: 'activate', id });
+              }
+              function removeController(id) {
+                vscode.postMessage({ command: 'remove', id });
+              }
+            </script>
           </body>
           </html>
         `;
+
+        // Store panel reference for output updates
+        const currentPanel = panel;
+        
+        // Handle messages from webview
+        panel.webview.onDidReceiveMessage(message => {
+          switch(message.command) {
+            case 'activate':
+              controllerManager.setActiveController(message.id);
+              panel.dispose();
+              break;
+            case 'remove':
+              if (controllerManager.getActiveController()?.getWorkspacePath() === message.id) {
+                vscode.window.showErrorMessage('Cannot remove active controller');
+              } else {
+                controllerManager.removeController(message.id);
+                panel.webview.html = panel.webview.html; // Refresh view
+              }
+              break;
+            case 'sendMessage':
+              vscode.commands.executeCommand(
+                "agent-maestro.sendToRoo",
+                message.message
+              );
+              break;
+          }
+        });
+      }),
+      vscode.commands.registerCommand("agent-maestro.refreshControllers", () => {
+        treeProvider.refresh();
+      }),
+      vscode.commands.registerCommand("agent-maestro.controllerActions", (item: ControllerTreeItem) => {
+        const quickPick = vscode.window.createQuickPick();
+        quickPick.items = [
+          { label: '$(debug-start) Activate', description: 'Set as active controller' },
+          { label: '$(trash) Remove', description: 'Delete this controller' },
+          { label: '$(info) Status', description: 'Show controller status' }
+        ];
+        quickPick.onDidChangeSelection(selection => {
+          if (selection[0]) {
+            switch (selection[0].label) {
+              case '$(debug-start) Activate':
+                controllerManager.setActiveController(item.controllerId);
+                treeProvider.refresh();
+                vscode.window.showInformationMessage(`Controller ${item.controllerId} activated`);
+                break;
+              case '$(trash) Remove':
+                if (controllerManager.getActiveController()?.getWorkspacePath() === item.controllerId) {
+                  vscode.window.showErrorMessage('Cannot remove active controller');
+                } else {
+                  controllerManager.removeController(item.controllerId);
+                  treeProvider.refresh();
+                }
+                break;
+              case '$(info) Status':
+                const controller = controllerManager.getController(item.controllerId);
+                if (controller) {
+                  const status = getSystemInfo(controller);
+                  vscode.window.showInformationMessage(
+                    JSON.stringify(status, null, 2)
+                  );
+                }
+                break;
+            }
+          }
+          quickPick.dispose();
+        });
+        quickPick.show();
       })
     ];
 

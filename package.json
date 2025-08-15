@@ -20,7 +20,8 @@
   ],
   "activationEvents": [
     "onLanguage",
-    "onStartupFinished"
+    "onStartupFinished",
+    "onCommand:agent-maestro.showPanel"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -54,8 +55,28 @@
         "category": "Agent Maestro"
       },
       {
-        "command": "agent-maestro.showUI",
-        "title": "Agent Maestro: Show UI",
+        "command": "agent-maestro.showPanel",
+        "title": "Agent Maestro: Show Controller Panel",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.createController",
+        "title": "Agent Maestro: Create Controller",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.switchController",
+        "title": "Agent Maestro: Switch Controller",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.setWorkspacePath",
+        "title": "Agent Maestro: Set Workspace Path",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.saveRooCodeSettings",
+        "title": "Agent Maestro: Save RooCode Settings",
         "category": "Agent Maestro"
       }
     ],
@@ -139,6 +160,8 @@
     "bullmq": "^5.5.0",
     "dockerode": "^4.0.7",
     "express": "^4.21.2",
+    "pg": "^8.11.3",
+    "@types/pg": "^8.10.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
     "recharts": "^2.15.4",
