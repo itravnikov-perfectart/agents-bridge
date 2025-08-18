@@ -85,3 +85,16 @@ Check logs in:
 - problem with switch controller (when you switch between controllers, the created controllers disappear and only the one you selected remains)
 - VS Code UI , need will be better
 - problem with start many controller (solution: Implement like a roo code eval or take how we did headless roo code)
+
+
+
+## WebSocket Server Implementation
+
+### Initialization
+The WebSocket server is initialized in `src/server/websocket.config.ts` with:
+
+### Integration Flow:
+1. Server starts when extension activates
+2. Each controller creates its own WebSocket instance
+3. Agents connect and authenticate via tokens
+4. Messages are routed by workspace path
