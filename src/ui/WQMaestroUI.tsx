@@ -1,40 +1,100 @@
-import * as React from 'react';
 import { ProcessStatus } from '../server/types';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 
 const styles = `
   .agent-maestro-ui {
     font-family: var(--vscode-font-family);
-    padding: 10px;
+    padding: 0;
+    color: var(--vscode-foreground);
   }
-  .controllers-list {
-    margin-bottom: 20px;
+  
+  h2 {
+    font-size: 1.2em;
+    font-weight: 600;
+    margin: 16px 0 8px 0;
+    color: var(--vscode-titleBar-activeForeground);
   }
-  .controller {
-    padding: 8px;
-    border-bottom: 1px solid var(--vscode-editorWidget-border);
+  
+  h3 {
+    font-size: 1em;
+    font-weight: 600;
+    margin: 12px 0 6px 0;
+    color: var(--vscode-foreground);
+  }
+  
+  .output-section {
+    margin: 8px 0;
+  }
+  
+  .output-section pre {
+    white-space: pre-wrap;
+    background: transparent;
+    padding: 0;
+    margin: 4px 0;
+    font-size: 0.9em;
+  }
+  
+  .process-form {
+    margin: 12px 0;
+  }
+  
+  .process-form label {
+    display: block;
+    margin: 8px 0 2px 0;
+    font-size: 0.9em;
+  }
+  
+  .process-form input,
+  .process-form textarea {
+    width: 100%;
+    padding: 4px;
     margin-bottom: 8px;
+    font-size: 0.9em;
   }
-  .controller.active {
-    background-color: var(--vscode-list-activeSelectionBackground);
+  
+  .process-form textarea {
+    min-height: 60px;
   }
-  .workspace-path {
+  
+  button {
+    margin: 4px 4px 4px 0;
+    padding: 4px 12px;
+    font-size: 0.9em;
+  }
+  
+  .process-list {
+    margin: 8px 0;
+  }
+  
+  .process-item {
+    margin: 8px 0;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border);
+  }
+  
+  .process-header {
+    display: flex;
+    justify-content: space-between;
+    margin-bottom: 4px;
+  }
+  
+  .process-id {
+    font-size: 0.9em;
+    font-weight: 600;
+  }
+  
+  .status-badge {
     font-size: 0.8em;
-    color: var(--vscode-descriptionForeground);
-    word-break: break-all;
+    padding: 2px 6px;
+  }
+  
+  .process-details {
+    font-size: 0.85em;
     margin: 4px 0;
   }
-  button {
-    margin-right: 8px;
-    padding: 4px 8px;
-    background: var(--vscode-button-background);
-    color: var(--vscode-button-foreground);
-    border: none;
-    border-radius: 2px;
-    cursor: pointer;
-  }
-  button:hover {
-    background: var(--vscode-button-hoverBackground);
+  
+  .metrics-chart {
+    margin: 12px 0;
   }
 `;
 

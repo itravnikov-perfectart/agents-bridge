@@ -196,11 +196,6 @@ export async function activate(context: vscode.ExtensionContext) {
       }),
       vscode.commands.registerCommand("agent-maestro.sendToRoo", async () => {
         try {
-          const controller = controllerManager.getActiveController();
-          if (!controller) {
-            throw new Error("No active controller");
-          }
-
           const activeController = controllerManager.getActiveController();
           if (!activeController) {
             throw new Error("No active controller");
@@ -210,67 +205,75 @@ export async function activate(context: vscode.ExtensionContext) {
             throw new Error("No active RooCode adapter found");
           };
 
-          // Сначала запрашиваем сообщение
-          const message = await vscode.window.showInputBox({
-            prompt: 'Введите сообщение для RooCode',
-            placeHolder: 'Ваше сообщение...'
+          // Запрашиваем количество задач
+          const taskCountStr = await vscode.window.showInputBox({
+            prompt: 'Сколько задач вы хотите отправить?',
+            placeHolder: '1'
           });
+          if (!taskCountStr) return;
 
-          if (!message) {
-            return; // Отмена ввода
+          const taskCount = parseInt(taskCountStr);
+          if (isNaN(taskCount) || taskCount < 1) {
+            throw new Error("Некорректное количество задач");
           }
 
-          // Получаем workspacePath из активного контроллера
+          // Собираем сообщения для каждой задачи
+          const messages: string[] = [];
+          for (let i = 0; i < taskCount; i++) {
+            const message = await vscode.window.showInputBox({
+              prompt: `Введите сообщение для задачи ${i + 1}`,
+              placeHolder: 'Ваше сообщение...'
+            });
+            if (!message) return; // Отмена ввода
+            messages.push(message);
+          }
+
           const workspacePath = activeController.getWorkspacePath();
-          
-          // Генерируем уникальный taskId для сообщения
-          // Создаем уникальный taskId с привязкой к workspace
-          const taskId = `msg-${Date.now()}-${workspacePath.replace(/\W/g, '-')}-${Math.random().toString(36).substring(2, 4)}`;
-          
-          // Логируем создание задачи
-          logger.debug(`Creating task ${taskId} for workspace ${workspacePath}`);
-          
-          // Создаем и настраиваем задачу
-          const taskOptions = {
+          const taskIds = messages.map((_, i) =>
+            `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, '-')}`
+          );
+
+          // Создаем output channel для всех задач
+          const outputChannel = vscode.window.createOutputChannel(
+            `RooCode Tasks ${taskIds[0]}...`
+          );
+          outputChannel.show();
+          outputChannel.appendLine(`Starting ${taskCount} tasks in workspace: ${workspacePath}`);
+
+          // Запускаем все задачи параллельно
+          const taskOptions = messages.map((message, i) => ({
             workspacePath,
-            taskId,
+            taskId: taskIds[i],
+            text: message,
             metadata: {
               source: 'vscode-extension',
               controllerId: activeController.getWorkspacePath()
             }
-          };
-          
-          // Создаем новую задачу и логируем
-          await adapter.startNewTask(taskOptions);
-          logger.debug(`Task ${taskId} created successfully`);
-          
-          // Создаем output channel для задачи
-          const outputChannel = vscode.window.createOutputChannel(`Task ${taskId}`);
-          outputChannel.show();
-          outputChannel.appendLine(`Starting task in workspace: ${workspacePath}`);
-          outputChannel.appendLine(`Message: ${message}`);
-          
-          // Отправляем сообщение и обрабатываем события
-          for await (const event of adapter.sendMessage(message, undefined, {
-            taskId,
-            workspacePath
-          })) {
-            // Логируем все события в output
-            outputChannel.appendLine(`[${event.name}] ${JSON.stringify(event.data)}`);
-            if (event.name === RooCodeEventName.Message) {
-              const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
-              if (messageEvent.data.message?.text) {
-                // Выводим в output канал
-                outputChannel.appendLine(`Result: ${messageEvent.data.message.text}`);
-                
-                // Выполняем результат
-                await vscode.commands.executeCommand(
-                  "agent-maestro.executeRooResult",
-                  messageEvent.data.message.text
-                );
+          }));
+
+          const taskStreams = await adapter.executeRooTasks(taskOptions);
+
+          // Обрабатываем результаты всех задач
+          for await (const taskEvents of taskStreams) {
+            const taskId = taskEvents[0]?.data?.taskId || 'unknown-task';
+            try {
+              for (const event of taskEvents) {
+                outputChannel.appendLine(`[${taskId}] [${event.name}] ${JSON.stringify(event.data)}`);
+                if (event.name === RooCodeEventName.Message) {
+                  const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
+                  if (messageEvent.data.message?.text) {
+                    outputChannel.appendLine(`[${taskId}] Result: ${messageEvent.data.message.text}`);
+                    await vscode.commands.executeCommand(
+                      "agent-maestro.executeRooResult",
+                      messageEvent.data.message.text
+                    );
+                  }
+                }
               }
+            } catch (error) {
+              outputChannel.appendLine(`[${taskId}] Error: ${error}`);
             }
-          };
+          }
         } catch (error) {
           logger.error("Error sending message to RooCode:", error);
           vscode.window.showErrorMessage(

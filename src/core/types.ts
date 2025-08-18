@@ -1,3 +1,5 @@
+import { RooCodeEventName } from "@roo-code/types";
+
 export enum AgentStatus {
   RUNNING = 'running',
   STOPPED = 'stopped',
@@ -5,10 +7,7 @@ export enum AgentStatus {
   STARTING = 'starting'
 }
 
-export interface AgentHealth {
-  agentId: string;
-  status: AgentStatus;
-  lastHeartbeat: number;
-  containerHealth: string;
-  healthy: boolean;
+export interface TaskEvent<T = RooCodeEventName> {
+  name: T;
+  data: any;
 }

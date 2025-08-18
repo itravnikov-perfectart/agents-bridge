@@ -11,7 +11,8 @@ import {
 } from "@roo-code/types";
 import { Anthropic } from "@anthropic-ai/sdk";
 import { ExtensionBaseAdapter } from "./ExtensionBaseAdapter";
-import { TaskEvent } from "../server/types";
+import { Semaphore } from "es-toolkit";
+import type { TaskEvent } from "./types";
 
 export interface RooCodeMessageOptions {
   taskId?: string;
@@ -38,12 +39,15 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private taskEventResolvers: Map<string, ((event: TaskEvent) => void)[]> =
     new Map();
   private extensionId: string;
+  private activeTasks: Set<string> = new Set();
+  private taskSemaphore: Semaphore;
   public lastHeartbeat = 0;
   public containerId?: string;
 
-  constructor(extensionId: string) {
+  constructor(extensionId: string, maxConcurrentTasks = 5) {
     super();
     this.extensionId = extensionId;
+    this.taskSemaphore = new Semaphore(maxConcurrentTasks);
     // Setup periodic heartbeat
     setInterval(() => {
       this.lastHeartbeat = Date.now();
@@ -717,6 +721,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     if (!this.api) {
       throw new Error("RooCode API not available");
     }
+    
 
     logger.info(`Getting task with ID: ${taskId}`);
     return await (this.api as any).sidebarProvider.getTaskWithId(taskId);
@@ -733,5 +738,50 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     }
 
     await super.dispose();
+  }
+
+  /**
+   * Execute multiple RooCode tasks in parallel with concurrency control
+   */
+  public async *executeRooTasks(
+    tasks: RooCodeTaskOptions[],
+    maxConcurrent = 5
+  ): AsyncGenerator<TaskEvent[], void, unknown> {
+    if (!this.api) {
+      throw new Error("RooCode API not available");
+    }
+
+    logger.info(`Executing ${tasks.length} RooCode tasks with max concurrency ${maxConcurrent}`);
+
+    const executing = new Set<Promise<TaskEvent[]>>();
+    const results: TaskEvent[][] = [];
+
+    for (const task of tasks) {
+      const taskPromise = (async () => {
+        const events: TaskEvent[] = [];
+        for await (const event of this.startNewTask(task)) {
+          events.push(event);
+        }
+        return events;
+      })();
+
+      executing.add(taskPromise);
+      taskPromise.then(result => {
+        executing.delete(taskPromise);
+        results.push(result);
+      });
+
+      if (executing.size >= maxConcurrent) {
+        await Promise.race(executing);
+      }
+    }
+
+    // Wait for remaining tasks
+    await Promise.all(executing);
+
+    // Yield all results
+    for (const result of results) {
+      yield result;
+    }
   }
 }
