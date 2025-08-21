@@ -1,0 +1,15 @@
+export enum Commands {
+  GetStatus = "agent-maestro.getStatus",
+  CreateController = "agent-maestro.createController",
+  SwitchController = "agent-maestro.switchController",
+  SetWorkspacePath = "agent-maestro.setWorkspacePath",
+  ShowPanel = "agent-maestro.showPanel",
+  SendToRoo = "agent-maestro.sendToRoo",
+  ExecuteRooResult = "agent-maestro.executeRooResult",
+  StartProcess = "agent-maestro.startProcess",
+  ListProcesses = "agent-maestro.listProcesses",
+  ShowControllers = "agent-maestro.showControllers",
+  SaveRooCodeSettings = "agent-maestro.saveRooCodeSettings",
+  RefreshControllers = "agent-maestro.refreshControllers",
+  ControllerActions = "agent-maestro.controllerActions",
+}

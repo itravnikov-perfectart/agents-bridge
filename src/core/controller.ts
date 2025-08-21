@@ -14,6 +14,7 @@ import {
 } from "../utils/config";
 import { ExtensionStatus } from "../utils/systemInfo";
 import { AgentStatus } from "./types";
+import { Commands } from "../commands";
 
 /**
  * Core controller to manage Cline, RooCode and WQ Maestro extensions
@@ -120,18 +121,23 @@ export class ExtensionController extends EventEmitter {
       pingInterval: this.currentConfig.wsPingInterval
     });
 
-    // Initialize task queue and events
-    this.taskQueue = new Queue('agent-tasks', {
-      connection: this.redisConfig,
-      defaultJobOptions: {
-        attempts: 3,
-        backoff: {
-          type: 'exponential',
-          delay: 1000
+    // Initialize task queue and events (with Redis fallback)
+    try {
+      this.taskQueue = new Queue('agent-tasks', {
+        connection: this.redisConfig,
+        defaultJobOptions: {
+          attempts: 3,
+          backoff: {
+            type: 'exponential',
+            delay: 1000
+          }
         }
-      }
-    });
-    logger.info('Task queue initialized');
+      });
+      logger.info('Task queue initialized with Redis');
+    } catch (error) {
+      logger.warn('Redis connection failed, task queue will be disabled:', error);
+      // Task queue will remain undefined, and we'll handle this in other methods
+    }
 
     this.isInitialized = true;
     logger.info("Extension controller initialized successfully");
@@ -187,7 +193,7 @@ export class ExtensionController extends EventEmitter {
    * Setup message handlers for RooCode adapter
    */
   private setupRooMessageHandlers(id: string, adapter: RooCodeAdapter): void {
-    const commandName = `agent-maestro.executeRooResult-${id}`;
+    const commandName = `${Commands.ExecuteRooResult}-${id}`;
     
     // First remove existing command if any
     const existing = this.activeTaskListeners.get(id);

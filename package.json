@@ -20,19 +20,15 @@
   ],
   "activationEvents": [
     "onLanguage",
-    "onStartupFinished",
-    "onCommand:agent-maestro.showPanel"
+    "onStartupFinished"
   ],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
       {
-        "command": "agents-bridge.helloWorld",
-        "title": "Hello World"
-      },
-      {
         "command": "agent-maestro.getStatus",
-        "title": "Agent Maestro: Get Status"
+        "title": "Agent Maestro: Get Status",
+        "category": "Agent Maestro"
       },
       {
         "command": "agent-maestro.sendToRoo",
@@ -78,6 +74,11 @@
         "command": "agent-maestro.saveRooCodeSettings",
         "title": "Agent Maestro: Save RooCode Settings",
         "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.showUI",
+        "title": "Agent Maestro: Show UI",
+        "category": "Agent Maestro"
       }
     ],
     "configuration": {
@@ -119,22 +120,32 @@
     "build": "pnpm run compile && pnpm run build:ui",
     "build:extension": "pnpm run compile && pnpm run vscode:prepublish",
     "prebuild": "pnpm install",
-    "dev": "pnpm run watch"
+    "dev": "pnpm run watch",
+    "vsix": "rm -rf ./bin && mkdir ./bin && vsce package --no-dependencies --allow-missing-repository --out ./bin"
   },
   "devDependencies": {
     "@types/dockerode": "^3.3.12",
+    "@types/express": "^4.17.23",
     "@types/jest": "^29.5.14",
     "@types/mocha": "^10.0.10",
     "@types/node": "20.x",
     "@types/vscode": "^1.102.0",
-    "@typescript-eslint/eslint-plugin": "^8.31.1",
-    "@typescript-eslint/parser": "^8.31.1",
+    "@types/lodash": "^4.17.20",
+    "@types/pg": "^8.10.0",
+    "@types/react": "^18.2.0",
+    "@types/react-dom": "^18.2.0",
+    "@types/recharts": "^1.8.29",
+    "@types/uuid": "^10.0.0",
+    "@types/ws": "^8.5.10",
+    "@roo-code/types": "^1.40.0",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
     "@vscode/test-cli": "^0.0.11",
     "@vscode/test-electron": "^2.5.2",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.8",
-    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-n": "^17.21.3",
     "eslint-plugin-prettier": "^5.5.3",
     "jest": "^29.7.0",
     "npm-run-all": "^4.1.5",
@@ -148,15 +159,6 @@
   "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
   "dependencies": {
     "@anthropic-ai/sdk": "^0.57.0",
-    "@roo-code/types": "^1.40.0",
-    "@types/express": "^4.17.23",
-    "@types/lodash": "^4.17.20",
-    "@types/pg": "^8.10.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/recharts": "^1.8.29",
-    "@types/uuid": "^10.0.0",
-    "@types/ws": "^8.5.10",
     "@vitejs/plugin-react": "^4.2.1",
     "bullmq": "^5.5.0",
     "dockerode": "^4.0.7",
