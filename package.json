@@ -26,58 +26,8 @@
   "contributes": {
     "commands": [
       {
-        "command": "agent-maestro.getStatus",
-        "title": "Agent Maestro: Get Status",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.sendToRoo",
-        "title": "Agent Maestro: Send to RooCode",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.executeRooResult",
-        "title": "Agent Maestro: Execute RooCode Result",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.startProcess",
-        "title": "Agent Maestro: Start Process",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.listProcesses",
-        "title": "Agent Maestro: List Processes",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.showPanel",
-        "title": "Agent Maestro: Show Controller Panel",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.createController",
-        "title": "Agent Maestro: Create Controller",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.switchController",
-        "title": "Agent Maestro: Switch Controller",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.setWorkspacePath",
-        "title": "Agent Maestro: Set Workspace Path",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.saveRooCodeSettings",
-        "title": "Agent Maestro: Save RooCode Settings",
-        "category": "Agent Maestro"
-      },
-      {
-        "command": "agent-maestro.showUI",
-        "title": "Agent Maestro: Show UI",
+        "command": "agent-maestro.connectToWSServer",
+        "title": "Agent Maestro: Connect to WebSocket Server",
         "category": "Agent Maestro"
       }
     ],
@@ -116,7 +66,9 @@
     "lint": "eslint src",
     "test": "vscode-test",
     "start:ui": "vite serve src/ui --port 3000",
-    "build:ui": "cd src/ui && vite build",
+    "start:ws": "node ws-server.js",
+    "start:ws:ts": "node -r ts-node/register src/standalone-ws-server.ts",
+    "build:ui": "vite build",
     "build": "pnpm run compile && pnpm run build:ui",
     "build:extension": "pnpm run compile && pnpm run vscode:prepublish",
     "prebuild": "pnpm install",

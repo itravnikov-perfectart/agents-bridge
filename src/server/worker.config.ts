@@ -1,23 +1,7 @@
-import { Queue, Worker as BullWorker, AdvancedOptions } from 'bullmq';
+import { Worker as BullWorker, Queue } from 'bullmq';
 import { logger } from '../utils/logger';
-import Docker from 'dockerode';
+import { CustomAdvancedOptions, WorkerConfig } from './types';
 
-interface CustomAdvancedOptions extends AdvancedOptions {
-  maxStalledCount?: number;
-}
-
-export interface RedisConfig {
-  host: string;
-  port: number;
-  password?: string;
-  db?: number;
-}
-
-export interface WorkerConfig {
-  queueName: string;
-  redis: RedisConfig;
-  concurrency?: number;
-}
 
 export const createTaskQueue = (config: WorkerConfig) => {
   const { queueName, redis } = config;
@@ -39,7 +23,6 @@ export const createTaskQueue = (config: WorkerConfig) => {
 
 export const createWorker = (
   config: WorkerConfig,
-  docker: Docker,
   handlers: {
     startContainer: (data: any) => Promise<string>;
     stopContainer: (containerId: string) => Promise<void>;

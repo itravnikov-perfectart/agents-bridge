@@ -1,20 +1,20 @@
+import { Queue, QueueEvents } from "bullmq";
+import Docker from "dockerode";
 import { EventEmitter } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
-import { logger } from "../utils/logger";
-import { RooCodeAdapter } from "./RooCodeAdapter";
-import { Queue, Job, QueueEvents } from "bullmq";
-import { RedisConfig } from "../server/worker.config";
-import Docker from "dockerode";
-import { createWebSocketServer, WebSocketServerInstance } from "../server/websocket.config";
+import { WebSocket } from "ws";
+import { Commands } from "../commands";
+import { RedisConfig } from "../server/types";
 import {
   AgentMaestroConfiguration,
   DEFAULT_CONFIG,
   readConfiguration,
 } from "../utils/config";
+import { logger } from "../utils/logger";
 import { ExtensionStatus } from "../utils/systemInfo";
+import { RooCodeAdapter } from "./RooCodeAdapter";
 import { AgentStatus } from "./types";
-import { Commands } from "../commands";
 
 /**
  * Core controller to manage Cline, RooCode and WQ Maestro extensions
@@ -29,7 +29,7 @@ export class ExtensionController extends EventEmitter {
   private redisConfig: RedisConfig;
   private docker: Docker;
   private lastAgentIndex = 0;
-  private webSocketServer?: WebSocketServerInstance;
+  private ws?: WebSocket;
   private activeTasks: Map<string, {workspacePath: string, agentId: string}> = new Map();
   private workspacePath: string;
 
@@ -115,11 +115,11 @@ export class ExtensionController extends EventEmitter {
       );
     }
 
-    // Initialize WebSocket server
-    this.webSocketServer = createWebSocketServer({
-      port: this.currentConfig.wsPort,
-      pingInterval: this.currentConfig.wsPingInterval
-    });
+    // // Initialize WebSocket server
+    // this.webSocketServer = createWebSocketServer({
+    //   port: this.currentConfig.wsPort,
+    //   pingInterval: this.currentConfig.wsPingInterval
+    // });
 
     // Initialize task queue and events (with Redis fallback)
     try {
@@ -341,15 +341,15 @@ export class ExtensionController extends EventEmitter {
     }
 
     // Broadcast task assignment via WebSocket
-    if (this.webSocketServer) {
-      this.webSocketServer.broadcast({
+    if (this.ws) {
+      this.ws.send(JSON.stringify({
         type: 'taskAssignment',
         taskId: job.id,
         agentId,
         taskType: task.type,
         workspacePath: task.workspacePath || '', // Pass workspace path
         timestamp: Date.now()
-      });
+      })); 
     }
 
     // Track active task
@@ -419,8 +419,8 @@ export class ExtensionController extends EventEmitter {
     }
 
     // Cleanup WebSocket server
-    if (this.webSocketServer) {
-      await this.webSocketServer.close();
+    if (this.ws) {
+      this.ws.close();
     }
 
     // Cleanup Docker resources
@@ -468,6 +468,44 @@ export class ExtensionController extends EventEmitter {
    */
   public getActiveTaskCount(): number {
     return this.activeTasks.size;
+  }
+
+  connectToWSServer(port: number): void {
+    try {
+    // establish a connection to the websocket server
+     this.ws = new WebSocket(`ws://localhost:${port}`);
+
+    this.ws.onopen = () => {
+      logger.info(`Connected to WebSocket server on port ${port}`);
+    };
+    this.ws.onmessage = (event) => {
+      try {
+        const messageData = event.data.toString();
+        const message = JSON.parse(messageData);
+        logger.info(`Received message from WebSocket server: ${messageData}`);
+        
+        // Handle ping messages by responding with pong
+        if (message.type === 'ping') {
+          this.ws?.send(JSON.stringify({
+            type: 'pong',
+            timestamp: message.timestamp
+          }));
+          logger.info('Sent pong response to WebSocket server');
+        }
+      } catch (error) {
+        logger.error('Failed to parse WebSocket message:', error);
+        logger.info(`Raw message: ${event.data}`);
+      }
+    };
+    this.ws.onclose = () => {
+      logger.info(`Disconnected from WebSocket server`);
+    };
+    this.ws.onerror = (error) => {
+        logger.error(`WebSocket error: ${error}`);
+      };
+    } catch (error) {
+      logger.error(`Error connecting to WebSocket server: ${error}`);
+    }
   }
 }
 

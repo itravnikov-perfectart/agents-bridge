@@ -12,4 +12,5 @@ export enum Commands {
   SaveRooCodeSettings = "agent-maestro.saveRooCodeSettings",
   RefreshControllers = "agent-maestro.refreshControllers",
   ControllerActions = "agent-maestro.controllerActions",
+  ConnectToWSServer = "agent-maestro.connectToWSServer",
 }

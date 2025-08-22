@@ -5,13 +5,15 @@ export default defineConfig({
   root: "./src/ui",
   plugins: [react()],
   build: {
-    outDir: "../../dist/ui",
-    emptyOutDir: true,
+    outDir: "../../dist",
+    emptyOutDir: false, // Don't clear dist to preserve extension.js
     sourcemap: true,
     rollupOptions: {
-      input: "./src/ui/index.html",
       external: ["ws", "vscode"],
       output: {
+        entryFileNames: 'assets/[name]-[hash].js',
+        chunkFileNames: 'assets/[name]-[hash].js',
+        assetFileNames: 'assets/[name]-[hash][extname]',
         manualChunks: {
           utils: ["src/utils/logger.ts"],
         },

@@ -1,7 +1,9 @@
 import { RooCodeEventName } from "@roo-code/types";
+import { AdvancedOptions } from "bullmq";
+import { WebSocket } from "ws";
 
 export interface AuthMessage {
-  type: 'authenticate';
+  type: "authenticate";
   token: string;
 }
 
@@ -29,7 +31,13 @@ export interface ProcessStatus {
   pid?: number;
   containerId?: string;
   jobId?: string;
-  status: 'unknown' | 'created' | 'running' | 'stopped' | 'failed' | 'completed';
+  status:
+    | "unknown"
+    | "created"
+    | "running"
+    | "stopped"
+    | "failed"
+    | "completed";
   exitCode?: number;
   memoryUsage?: number;
   cpuUsage?: number;
@@ -54,4 +62,50 @@ export interface ProcessOptions {
   image?: string;
   ports?: number[];
   autoRestart?: boolean;
+}
+export interface Controller {
+  id: string;
+  workspace_path: string;
+  config: string;
+  created_at: Date;
+  updated_at: Date;
+}
+
+export interface Task {
+  id: string;
+  controller_id: string;
+  type: string;
+  status: string;
+  result?: string;
+  created_at: Date;
+}
+
+export interface WebSocketConfig {
+  port: number;
+  pingInterval?: number;
+  connectionTimeout?: number;
+}
+
+export interface AgentConnection {
+  id: string;
+  socket: WebSocket;
+  lastHeartbeat: number;
+  metadata?: Record<string, unknown>;
+}
+
+export interface CustomAdvancedOptions extends AdvancedOptions {
+  maxStalledCount?: number;
+}
+
+export interface RedisConfig {
+  host: string;
+  port: number;
+  password?: string;
+  db?: number;
+}
+
+export interface WorkerConfig {
+  queueName: string;
+  redis: RedisConfig;
+  concurrency?: number;
 }
