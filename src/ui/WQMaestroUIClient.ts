@@ -1,5 +1,6 @@
 import { logger } from '../utils/browserLogger';
-import { ProcessStatus, ProcessOptions } from '../server/types';
+import { ProcessStatus, ProcessOptions, IMessageFromUI } from '../server/types';
+import { EConnectionType, EMessageFromUI } from '../server/message.enum';
 
 export class WQMaestroUIClient {
   private ws: WebSocket;
@@ -57,11 +58,15 @@ export class WQMaestroUIClient {
       };
 
       this.ws.addEventListener('message', handler);
-      this.ws.send(JSON.stringify({
-        type: 'startProcess',
-        requestId,
-        options
-      }));
+      const messageToSend: IMessageFromUI = {
+        messageType: EMessageFromUI.StartProcess,
+        connectionType: EConnectionType.UI,
+        details: {
+          requestId,
+          options,
+        },
+      };
+      this.ws.send(JSON.stringify(messageToSend));
     });
   }
 
@@ -92,11 +97,15 @@ export class WQMaestroUIClient {
       };
 
       this.ws.addEventListener('message', handler);
-      this.ws.send(JSON.stringify({
-        type: 'stopProcess',
-        requestId,
-        processId
-      }));
+      const messageToSend: IMessageFromUI = {
+        messageType: EMessageFromUI.StopProcess,
+        connectionType: EConnectionType.UI,
+        details: {
+          requestId,
+          processId,
+        },
+      };
+      this.ws.send(JSON.stringify(messageToSend));
     });
   }
 
@@ -127,11 +136,15 @@ export class WQMaestroUIClient {
       };
 
       this.ws.addEventListener('message', handler);
-      this.ws.send(JSON.stringify({
-        type: 'getProcessStatus',
-        requestId,
-        processId
-      }));
+      const messageToSend: IMessageFromUI = {
+        messageType: EMessageFromUI.GetProcessStatus,
+        connectionType: EConnectionType.UI,
+        details: {
+          requestId,
+          processId,
+        },
+      };
+      this.ws.send(JSON.stringify(messageToSend));
     });
   }
 
@@ -162,10 +175,14 @@ export class WQMaestroUIClient {
       };
 
       this.ws.addEventListener('message', handler);
-      this.ws.send(JSON.stringify({
-        type: 'listProcesses',
-        requestId
-      }));
+      const messageToSend: IMessageFromUI = {
+        messageType: EMessageFromUI.ListProcesses,
+        connectionType: EConnectionType.UI,
+        details: {
+          requestId,
+        },
+      };
+      this.ws.send(JSON.stringify(messageToSend));
     });
   }
 
@@ -196,11 +213,15 @@ export class WQMaestroUIClient {
       };
 
       this.ws.addEventListener('message', handler);
-      this.ws.send(JSON.stringify({
-        type: 'sendToRoo',
-        requestId,
-        message
-      }));
+      const messageToSend: IMessageFromUI = {
+        messageType: EMessageFromUI.SendToRooCode,
+        connectionType: EConnectionType.UI,
+        details: {
+          requestId,
+          message,
+        },
+      };
+      this.ws.send(JSON.stringify(messageToSend));
     });
 }
 }

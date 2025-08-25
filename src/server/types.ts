@@ -1,6 +1,13 @@
 import { RooCodeEventName } from "@roo-code/types";
 import { AdvancedOptions } from "bullmq";
 import { WebSocket } from "ws";
+import {
+  EConnectionType,
+  EMessageFromAgent,
+  EMessageFromServer,
+  EMessageFromUI,
+  EMessageToServer
+} from "./message.enum";
 
 export interface AuthMessage {
   type: "authenticate";
@@ -90,6 +97,9 @@ export interface AgentConnection {
   id: string;
   socket: WebSocket;
   lastHeartbeat: number;
+  lastPingSent: number;
+  connectedAt: number;
+  gracePeriod?: boolean;
   metadata?: Record<string, unknown>;
 }
 
@@ -109,3 +119,27 @@ export interface WorkerConfig {
   redis: RedisConfig;
   concurrency?: number;
 }
+
+export interface IMessageToServer {
+  metadata?: Record<string, unknown>;
+  details?: Record<string, any>;
+}
+
+export interface IMessageFromUI extends IMessageToServer {
+  messageType: EMessageFromUI | EMessageToServer;
+  connectionType: EConnectionType.UI;
+}
+
+export interface IMessageFromAgent extends IMessageToServer {
+  messageType: EMessageFromAgent | EMessageToServer;
+  connectionType: EConnectionType.Agent;
+  agentId: string;
+}
+
+export interface IMessageFromServer extends IMessageToServer {
+  messageType: EMessageFromServer;
+  agentId?: string;
+  timestamp?: number;
+}
+
+export type TMessageToServer = IMessageFromUI | IMessageFromAgent;

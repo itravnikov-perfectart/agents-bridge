@@ -100,6 +100,7 @@ export async function activate(context: vscode.ExtensionContext) {
     initialWorkspacePath,
   );
 
+  // Initialize the extension controller
   try {
     await defaultController.initialize();
   } catch (error) {
@@ -213,71 +214,71 @@ export async function activate(context: vscode.ExtensionContext) {
       //   }
       // }),
 
-      // vscode.commands.registerCommand(Commands.SendToRoo, async () => {
+      vscode.commands.registerCommand(Commands.SendToRoo, async () => {
       //   try {
-      //     const activeController = controllerManager.getActiveController();
-      //     if (!activeController) {
-      //       throw new Error("No active controller");
-      //     }
-      //     const adapter = activeController.getRooAdapter();
-      //     if (!adapter) {
-      //       throw new Error("No active RooCode adapter found");
-      //     }
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const adapter = activeController.getRooAdapter();
+          if (!adapter) {
+            throw new Error("No active RooCode adapter found");
+          }
 
-      //     // Запрашиваем количество задач
-      //     const taskCountStr = await vscode.window.showInputBox({
-      //       prompt: "How many tasks do you want to send?",
-      //       placeHolder: "1",
-      //     });
-      //     if (!taskCountStr) {
-      //       return;
-      //     }
+          // Запрашиваем количество задач
+          const taskCountStr = await vscode.window.showInputBox({
+            prompt: "How many tasks do you want to send?",
+            placeHolder: "1",
+          });
+          if (!taskCountStr) {
+            return;
+          }
 
-      //     const taskCount = parseInt(taskCountStr);
-      //     if (isNaN(taskCount) || taskCount < 1) {
-      //       throw new Error("Invalid number of tasks");
-      //     }
+          const taskCount = parseInt(taskCountStr);
+          if (isNaN(taskCount) || taskCount < 1) {
+            throw new Error("Invalid number of tasks");
+          }
 
-      //     // Собираем сообщения для каждой задачи
-      //     const messages: string[] = [];
-      //     for (let i = 0; i < taskCount; i++) {
-      //       const message = await vscode.window.showInputBox({
-      //         prompt: `Enter message for task ${i + 1}`,
-      //         placeHolder: "Your message...",
-      //       });
-      //       if (!message) {
-      //         return;
-      //       } // Отмена ввода
-      //       messages.push(message);
-      //     }
+          // Собираем сообщения для каждой задачи
+          const messages: string[] = [];
+          for (let i = 0; i < taskCount; i++) {
+            const message = await vscode.window.showInputBox({
+              prompt: `Enter message for task ${i + 1}`,
+              placeHolder: "Your message...",
+            });
+            if (!message) {
+              return;
+            } // Отмена ввода
+            messages.push(message);
+          }
 
-      //     const workspacePath = activeController.getWorkspacePath();
-      //     const taskIds = messages.map(
-      //       (_, i) =>
-      //         `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, "-")}`,
-      //     );
+          const workspacePath = activeController.getWorkspacePath();
+          const taskIds = messages.map(
+            (_, i) =>
+              `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, "-")}`,
+          );
 
-      //     // Create output channel for all tasks
-      //     const outputChannel = vscode.window.createOutputChannel(
-      //       `RooCode Tasks ${taskIds[0]}...`,
-      //     );
-      //     outputChannel.show();
-      //     outputChannel.appendLine(
-      //       `Starting ${taskCount} tasks in workspace: ${workspacePath}`,
-      //     );
+          // Create output channel for all tasks
+          const outputChannel = vscode.window.createOutputChannel(
+            `RooCode Tasks ${taskIds[0]}...`,
+          );
+          outputChannel.show();
+          outputChannel.appendLine(
+            `Starting ${taskCount} tasks in workspace: ${workspacePath}`,
+          );
 
-      //     // Run all tasks in parallel
-      //     const taskOptions = messages.map((message, i) => ({
-      //       workspacePath,
-      //       taskId: taskIds[i],
-      //       text: message,
-      //       metadata: {
-      //         source: "vscode-extension",
-      //         controllerId: activeController.getWorkspacePath(),
-      //       },
-      //     }));
+          // Run all tasks in parallel
+          const taskOptions = messages.map((message, i) => ({
+            workspacePath,
+            taskId: taskIds[i],
+            text: message,
+            metadata: {
+              source: "vscode-extension",
+              controllerId: activeController.getWorkspacePath(),
+            },
+          }));
 
-      //     const taskStreams = adapter.executeRooTasks(taskOptions);
+          const taskStreams = adapter.executeRooTasks(taskOptions);
 
       //     // Process results of all tasks
       //     for await (const taskEvents of taskStreams) {
@@ -311,42 +312,42 @@ export async function activate(context: vscode.ExtensionContext) {
       //       `Failed to send message to RooCode: ${(error as Error).message}`,
       //     );
       //   }
-      // }),
+      }),
 
-      // vscode.commands.registerCommand(Commands.ExecuteRooResult,
-      //   async (result: string) => {
-      //     try {
-      //       const activeController = controllerManager.getActiveController();
-      //       if (!activeController) {
-      //         throw new Error("No active controller");
-      //       }
-      //       const adapter = activeController.getRooAdapter();
-      //       if (!adapter) {
-      //         throw new Error("No active RooCode adapter found");
-      //       }
-      //       // Use existing sendMessage functionality
-      //       for await (const event of adapter.sendMessage(result)) {
-      //         if (event.name === RooCodeEventName.Message) {
-      //           const messageEvent =
-      //             event as TaskEvent<RooCodeEventName.Message>;
-      //           if (messageEvent.data.message?.text) {
-      //             vscode.window.showInformationMessage(
-      //               `RooCode response: ${messageEvent.data.message.text}`,
-      //             );
-      //           }
-      //         }
-      //       }
-      //       vscode.window.showInformationMessage(
-      //         "RooCode result processed successfully",
-      //       );
-      //     } catch (error) {
-      //       logger.error("Error executing RooCode result:", error);
-      //       vscode.window.showErrorMessage(
-      //         `Failed to execute RooCode result: ${(error as Error).message}`,
-      //       );
-      //     }
-      //   },
-      // ),
+      vscode.commands.registerCommand(Commands.ExecuteRooResult,
+        async (result: string) => {
+          try {
+            const activeController = controllerManager.getActiveController();
+            if (!activeController) {
+              throw new Error("No active controller");
+            }
+            const adapter = activeController.getRooAdapter();
+            if (!adapter) {
+              throw new Error("No active RooCode adapter found");
+            }
+            // Use existing sendMessage functionality
+            for await (const event of adapter.sendMessage(result)) {
+              if (event.name === RooCodeEventName.Message) {
+                const messageEvent =
+                  event as TaskEvent<RooCodeEventName.Message>;
+                if (messageEvent.data.message?.text) {
+                  vscode.window.showInformationMessage(
+                    `RooCode response: ${messageEvent.data.message.text}`,
+                  );
+                }
+              }
+            }
+            vscode.window.showInformationMessage(
+              "RooCode result processed successfully",
+            );
+          } catch (error) {
+            logger.error("Error executing RooCode result:", error);
+            vscode.window.showErrorMessage(
+              `Failed to execute RooCode result: ${(error as Error).message}`,
+            );
+          }
+        },
+      ),
 
       // vscode.commands.registerCommand(Commands.SaveRooCodeSettings,
       //   async () => {

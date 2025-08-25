@@ -1,119 +1,223 @@
-import React, { useEffect, useState } from 'react'
-import ReactDOM from 'react-dom/client'
-import { WQMaestroUI } from './WQMaestroUI'
-import { ProcessStatus, ProcessOptions } from '../server/types'
+import React, { useEffect, useState } from "react";
+import ReactDOM from "react-dom/client";
+import {
+  EConnectionType,
+  EMessageFromServer,
+  EMessageFromUI,
+} from "../server/message.enum";
+import { IMessageFromServer, IMessageFromUI } from "../server/types";
+import { AgentMaestroUI } from "./AgentMaestroUI";
+
+// Types for our new agent-focused UI
+interface Agent {
+  id: string;
+  status: "connected" | "disconnected" | "timeout";
+  lastHeartbeat: number;
+  connectedAt: number;
+  metadata?: Record<string, any>;
+  gracePeriod?: boolean;
+}
+
+interface Task {
+  id: string;
+  agentId: string;
+  type: string;
+  payload: any;
+  status: "pending" | "in_progress" | "completed" | "failed";
+  createdAt: number;
+  completedAt?: number;
+  result?: any;
+  error?: string;
+}
 
 declare global {
   interface Window {
     agentMaestro: {
-      controllers: Array<{id: string, workspace: string}>
-      activeControllerId: string
-      onActivate: (id: string) => void
-      onRemove: (id: string) => void
-      onSendMessage: (message: string) => void
-    }
+      controllers: Array<{ id: string; workspace: string }>;
+      activeControllerId: string;
+      onActivate: (id: string) => void;
+      onRemove: (id: string) => void;
+      onSendMessage: (message: string) => void;
+    };
   }
 }
 
 const App = () => {
-  const [processes, setProcesses] = useState<ProcessStatus[]>([])
-  const [loading, setLoading] = useState(true)
-  const [executionOutput, setExecutionOutput] = useState('')
-  const [controllers, setControllers] = useState<Array<{id: string, workspace: string}>>([])
-  const [activeControllerId, setActiveControllerId] = useState('')
+  const [agents, setAgents] = useState<Agent[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [ws, setWs] = useState<WebSocket | null>(null);
 
+  // Connect to WebSocket server
   useEffect(() => {
-    // Initialize controllers from global window object
-    if (window.agentMaestro) {
-      setControllers(window.agentMaestro.controllers)
-      setActiveControllerId(window.agentMaestro.activeControllerId)
+    const connectWebSocket = () => {
+      const websocket = new WebSocket("ws://localhost:8080");
+
+      websocket.onopen = () => {
+        console.log("Connected to WebSocket server");
+        setWsConnected(true);
+        setLoading(false);
+
+        // Identify as UI client
+        const messageToSend: IMessageFromUI = {
+          messageType: EMessageFromUI.GetAgents,
+          connectionType: EConnectionType.UI,
+        };
+        websocket.send(JSON.stringify(messageToSend));
+
+        // Request initial agent list
+        setTimeout(() => {
+          const messageToSend: IMessageFromUI = {
+            messageType: EMessageFromUI.GetAgents,
+            connectionType: EConnectionType.UI,
+          };
+          websocket.send(JSON.stringify(messageToSend));
+        }, 100);
+      };
+
+      websocket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(event.data) as IMessageFromServer;
+          console.log("Received WebSocket message:", message);
+
+          switch (message.messageType) {
+            case EMessageFromServer.AgentList:
+              setAgents(message.details?.agents || []);
+              break;
+            case EMessageFromServer.Registered:
+              setAgents((prev) => {
+                const newAgent = message.details as Agent;
+                return [
+                  ...prev.filter((a) => a.id !== newAgent.id),
+                  newAgent,
+                ];
+              });
+              break;
+            case EMessageFromServer.Unregistered:
+              setAgents((prev) =>
+                prev.map((a) =>
+                  a.id === message.details?.agentId
+                    ? { ...a, status: "disconnected" }
+                    : a,
+                ),
+              );
+              break;
+            case EMessageFromServer.TaskAssigned:
+              setTasks((prev) => {
+                const newTask = message.details as Task;
+                return [
+                  ...prev.filter((t) => t.id !== newTask.id),
+                  newTask,
+                ];
+              });
+              break;
+          }
+        } catch (error) {
+          console.error("Failed to parse WebSocket message:", error);
+        }
+      };
+
+      websocket.onclose = () => {
+        console.log("WebSocket connection closed");
+        setWsConnected(false);
+        // Attempt to reconnect after 3 seconds
+        setTimeout(connectWebSocket, 3000);
+      };
+
+      websocket.onerror = (error) => {
+        console.error("WebSocket error:", error);
+        setWsConnected(false);
+      };
+
+      setWs(websocket);
+    };
+
+    connectWebSocket();
+
+    return () => {
+      if (ws) {
+        ws.close();
+      }
+    };
+  }, []);
+
+  const sendMessage = (message: any) => {
+    if (ws && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(message));
+    } else {
+      console.error("WebSocket not connected");
+    }
+  };
+
+  const sendToRooCode = async (agentId: string, message: string) => {
+    if (!agentId) {
+      throw new Error("No agent selected");
     }
 
-    const loadProcesses = async () => {
-      try {
-        setProcesses([])
-        setLoading(false)
-      } catch (error) {
-        console.error('Failed to load processes:', error)
-        setLoading(false)
-      }
-    }
+    const messageToSend: IMessageFromUI = {
+      messageType: EMessageFromUI.SendToRooCode,
+      connectionType: EConnectionType.UI,
+      details: {
+        agentId,
+        message,
+      },
+    };
+    sendMessage(messageToSend);
+  };
 
-    loadProcesses()
+  const createTask = async (
+    agentId: string,
+    taskType: string,
+    payload: any,
+  ) => {
+    const task: Task = {
+      id: `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+      agentId,
+      type: taskType,
+      payload,
+      status: "pending",
+      createdAt: Date.now(),
+    };
 
-    // Handle messages from VSCode
-    window.addEventListener('message', (event) => {
-      const message = event.data
-      switch(message.command) {
-        case 'controllersUpdated':
-          setControllers(message.controllers)
-          setActiveControllerId(message.activeControllerId)
-          break
-      }
-    })
-  }, [])
+    setTasks((prev) => [...prev, task]);
 
-  const handleStartProcess = async (options: ProcessOptions) => {
-    throw new Error('Process management not implemented in this UI')
-  }
+    const messageToSend: IMessageFromUI = {
+      messageType: EMessageFromUI.CreateTask,
+      connectionType: EConnectionType.UI,
+      details: {
+        task,
+      },
+    };
+    sendMessage(messageToSend);
 
-  const handleStopProcess = async (processId: string) => {
-    throw new Error('Process management not implemented in this UI')
-  }
-
-  const handleSendToRoo = async (message: string): Promise<string> => {
-    try {
-      if (window.agentMaestro?.onSendMessage) {
-        window.agentMaestro.onSendMessage(message)
-        return 'Message sent to RooCode'
-      }
-      throw new Error('No message handler available')
-    } catch (error) {
-      console.error('Failed to send to Roo:', error)
-      setExecutionOutput(`Error: ${error instanceof Error ? error.message : String(error)}`)
-      throw error
-    }
-  }
+    return task;
+  };
 
   if (loading) {
-    return <div>Loading processes...</div>
+    return (
+      <div style={{ padding: "20px", fontFamily: "var(--vscode-font-family)" }}>
+        <div>Connecting to WebSocket server...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="agent-maestro-ui">
-      <div className="controllers-list">
-        <h2>Agent Maestro Controllers</h2>
-        {controllers.map(controller => (
-          <div
-            key={controller.id}
-            className={`controller ${controller.id === activeControllerId ? 'active' : ''}`}
-          >
-            <div>{controller.id}</div>
-            <div className="workspace-path">{controller.workspace}</div>
-            <button onClick={() => window.agentMaestro?.onActivate(controller.id)}>
-              Activate
-            </button>
-            <button onClick={() => window.agentMaestro?.onRemove(controller.id)}>
-              Remove
-            </button>
-          </div>
-        ))}
-      </div>
+    <AgentMaestroUI
+      agents={agents}
+      tasks={tasks}
+      selectedAgent={selectedAgent}
+      onSelectAgent={setSelectedAgent}
+      onSendToRooCode={sendToRooCode}
+      onCreateTask={createTask}
+      wsConnected={wsConnected}
+    />
+  );
+};
 
-      <WQMaestroUI
-        processes={processes}
-        onStartProcess={handleStartProcess}
-        onStopProcess={handleStopProcess}
-        onStartAgent={async () => {}}
-        onSendToRoo={handleSendToRoo}
-        executionOutput={executionOutput}
-      />
-    </div>
-  )
-}
-
-ReactDOM.createRoot(document.getElementById('root')!).render(
+ReactDOM.createRoot(document.getElementById("root")!).render(
   <React.StrictMode>
     <App />
-  </React.StrictMode>
-)
+  </React.StrictMode>,
+);

@@ -23,7 +23,7 @@ export const CONFIG_KEYS = {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: AgentMaestroConfiguration = {
-  rooVariantIdentifiers: ["kilocode.kilo-code"],
+  rooVariantIdentifiers: [],
   defaultRooIdentifier: "rooveterinaryinc.roo-cline",
   allowOutsideWorkspaceAccess: false,
   wsPort: 8080,

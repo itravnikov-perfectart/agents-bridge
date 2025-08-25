@@ -91,9 +91,9 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         data: {
           ...data,
           message: {
-            ...data.message
-            }
-        }
+            ...data.message,
+          },
+        },
       });
     });
 
@@ -222,7 +222,6 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         },
       });
     });
-
   }
 
   /**
@@ -325,15 +324,17 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       if (options.workspacePath) {
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         const targetUri = vscode.Uri.file(options.workspacePath);
-        
-        if (!workspaceFolders.some(f => f.uri.fsPath === options.workspacePath)) {
+
+        if (
+          !workspaceFolders.some((f) => f.uri.fsPath === options.workspacePath)
+        ) {
           try {
             await vscode.workspace.updateWorkspaceFolders(0, 0, {
               uri: targetUri,
-              name: path.basename(options.workspacePath)
+              name: path.basename(options.workspacePath),
             });
             // Wait for workspace to be ready
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
           } catch (error) {
             logger.error(`Failed to update workspace: ${error}`);
             throw error;
@@ -470,16 +471,18 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       if (options?.workspacePath) {
         const workspaceFolders = vscode.workspace.workspaceFolders || [];
         const targetUri = vscode.Uri.file(options.workspacePath);
-        
+
         // Check if workspace already added
-        if (!workspaceFolders.some(f => f.uri.fsPath === options.workspacePath)) {
+        if (
+          !workspaceFolders.some((f) => f.uri.fsPath === options.workspacePath)
+        ) {
           try {
             vscode.workspace.updateWorkspaceFolders(0, 0, {
               uri: targetUri,
-              name: path.dirname(options.workspacePath)
+              name: path.dirname(options.workspacePath),
             });
             // Wait for workspace to be ready
-            await new Promise(resolve => setTimeout(resolve, 500));
+            await new Promise((resolve) => setTimeout(resolve, 500));
           } catch (error) {
             logger.error(`Failed to update workspace: ${error}`);
             throw error;
@@ -505,7 +508,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
           lastError = error;
           attempts++;
           if (attempts < maxAttempts) {
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise((resolve) => setTimeout(resolve, 300));
           }
         }
       }
@@ -721,7 +724,6 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     if (!this.api) {
       throw new Error("RooCode API not available");
     }
-    
 
     logger.info(`Getting task with ID: ${taskId}`);
     return await (this.api as any).sidebarProvider.getTaskWithId(taskId);
@@ -745,13 +747,15 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   public async *executeRooTasks(
     tasks: RooCodeTaskOptions[],
-    maxConcurrent = 5
+    maxConcurrent = 5,
   ): AsyncGenerator<TaskEvent[], void, unknown> {
     if (!this.api) {
       throw new Error("RooCode API not available");
     }
 
-    logger.info(`Executing ${tasks.length} RooCode tasks with max concurrency ${maxConcurrent}`);
+    logger.info(
+      `Executing ${tasks.length} RooCode tasks with max concurrency ${maxConcurrent}`,
+    );
 
     const executing = new Set<Promise<TaskEvent[]>>();
     const results: TaskEvent[][] = [];
@@ -766,7 +770,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       })();
 
       executing.add(taskPromise);
-      taskPromise.then(result => {
+      taskPromise.then((result) => {
         executing.delete(taskPromise);
         results.push(result);
       });
