@@ -1,0 +1,7 @@
+{
+  "entry": ["src/ui/index.tsx", "src/extension.ts"],
+  "project": ["src/**"],
+  "ignore": [],
+  "ignoreDependencies": [],
+  "ignoreUnresolved": []
+}
