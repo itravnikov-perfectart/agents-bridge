@@ -98,3 +98,63 @@ The WebSocket server is initialized in `src/server/websocket.config.ts` with:
 2. Each controller creates its own WebSocket instance
 3. Agents connect and authenticate via tokens
 4. Messages are routed by workspace path
+
+## WebSocket Server Management
+
+The project includes several commands for managing the WebSocket server:
+
+### Quick Commands
+```bash
+# Start WebSocket server on port 8080
+pnpm run start:ws
+
+# Stop WebSocket server on port 8080
+pnpm run stop:ws
+
+# Check WebSocket server status
+pnpm run status:ws
+
+# Kill all servers (UI and WebSocket)
+pnpm run kill:all
+
+# Kill Vite UI servers specifically
+pnpm run kill:vite
+```
+
+### Advanced Management Script
+```bash
+# Start server (default port 8080)
+pnpm run ws:start
+
+# Start server on specific port
+./scripts/ws-server.sh start 9000
+
+# Stop server
+pnpm run ws:stop
+
+# Restart server
+pnpm run ws:restart
+
+# Check server status
+pnpm run ws:status
+
+# Kill all servers (UI and WebSocket)
+pnpm run ws:killall
+
+# Kill Vite UI servers specifically
+pnpm run ws:killvite
+
+# Get help
+./scripts/ws-server.sh
+```
+
+### Manual Process Management
+```bash
+# Kill process on specific port
+lsof -ti:8080 | xargs kill -9
+
+# Check what's running on port 8080
+lsof -i:8080
+```
+
+## Development

@@ -46,6 +46,7 @@ export class ExtensionController extends EventEmitter {
   private activeTasks: Map<string, { workspacePath: string; agentId: string }> =
     new Map();
   private workspacePath: string;
+  private currentAgentId?: string;
 
   constructor(redisConfig: RedisConfig, workspacePath?: string) {
     super();
@@ -136,13 +137,15 @@ export class ExtensionController extends EventEmitter {
           if (event.name === RooCodeEventName.Message) {
             // const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
             if (event.data.message?.text) {
+              // Only send response for final (non-partial) messages to avoid duplication
+              if (!event.data.message.partial) {
+                this.sendRooCodeResponseToServer(event.data.message.text);
+              }
+              
               // outputChannel.appendLine(
               //   `[${taskId}] Result: ${messageEvent.data.message.text}`,
               // );
-              await vscode.commands.executeCommand(
-                Commands.ExecuteRooResult,
-                event.data.message.text,
-              );
+              // Removed the executeCommand call that was causing duplication
             }
           }
         }
@@ -606,6 +609,7 @@ export class ExtensionController extends EventEmitter {
       // establish a connection to the websocket server
       this.ws = new WebSocket(`ws://localhost:${port}`);
       const agentId = uuidv4();
+      this.currentAgentId = agentId;
 
       this.ws.onopen = () => {
         logger.info(`Connected to WebSocket server on port ${port}`);
@@ -631,7 +635,7 @@ export class ExtensionController extends EventEmitter {
         try {
           const messageData = event.data.toString();
           const message = JSON.parse(messageData) as IMessageFromServer;
-          logger.info(`Received message from WebSocket server: ${messageData}`);
+          logger.info(`[DEBUG] Agent ${this.currentAgentId} received message from WebSocket server: ${messageData}`);
 
           switch (message.messageType) {
             case EMessageFromServer.Ping:
@@ -660,10 +664,11 @@ export class ExtensionController extends EventEmitter {
 
             case EMessageFromServer.RooCodeMessage:
               logger.info(
-                `Received RooCode message from WebSocket server: ${messageData}`,
+                `[DEBUG] Agent ${this.currentAgentId} processing RooCode message from WebSocket server: ${messageData}`,
               );
               // Forward the message to RooCode
               if (message.details?.message) {
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.details.message}`);
                 await this.sendToRooCode(message.details.message);
               } else {
                 logger.warn(
@@ -674,11 +679,6 @@ export class ExtensionController extends EventEmitter {
             case EMessageFromServer.Unregistered:
               logger.info(
                 `Received unregistered message from WebSocket server: ${messageData}`,
-              );
-              break;
-            case EMessageFromServer.RooCodeMessage:
-              logger.info(
-                `Received roocode message from WebSocket server: ${messageData}`,
               );
               break;
             default:
@@ -705,6 +705,29 @@ export class ExtensionController extends EventEmitter {
     } catch (error) {
       logger.error(`Error connecting to WebSocket server:`, error);
     }
+  }
+
+  /**
+   * Send RooCode response back to WebSocket server for UI chat
+   */
+  private sendRooCodeResponseToServer(response: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      logger.warn("WebSocket not connected, cannot send RooCode response");
+      return;
+    }
+
+    const responseMessage: IMessageFromAgent = {
+      messageType: EMessageFromAgent.RooCodeResponse,
+      connectionType: EConnectionType.Agent,
+      agentId: this.currentAgentId || "unknown-agent",
+      details: {
+        response,
+        timestamp: Date.now(),
+      },
+    };
+
+    logger.info(`Sending RooCode response to server: ${response}`);
+    this.ws.send(JSON.stringify(responseMessage));
   }
 }
 

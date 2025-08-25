@@ -21,9 +21,20 @@ interface Task {
   error?: string
 }
 
+interface ChatMessage {
+  id: string
+  agentId: string
+  type: 'user' | 'agent' | 'loading' | 'partial'
+  content: string
+  timestamp: number
+  status?: 'sending' | 'sent' | 'delivered' | 'error' | 'loading' | 'streaming'
+}
+
 interface AgentMaestroUIProps {
   agents: Agent[]
   tasks: Task[]
+  chatMessages: ChatMessage[]
+  setChatMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   selectedAgent: string | null
   onSelectAgent: (agentId: string | null) => void
   onSendToRooCode: (agentId: string, message: string) => Promise<void>
@@ -63,7 +74,7 @@ const styles = `
   
   .main-content {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 1fr 1fr 1fr;
     gap: 16px;
     flex: 1;
     overflow: hidden;
@@ -275,11 +286,320 @@ const styles = `
     padding: 6px 12px;
     font-size: 0.8em;
   }
+
+  .chat-panel {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+  }
+
+  .chat-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 8px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .chat-message {
+    padding: 8px 12px;
+    border-radius: 8px;
+    max-width: 80%;
+    word-wrap: break-word;
+  }
+
+  .chat-message.user {
+    background-color: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    margin-left: 20%;
+    border-radius: 12px 12px 4px 12px;
+  }
+
+  .chat-message.user[data-agent-id="roocode"] {
+    background-color: var(--vscode-textPreformat-background);
+    color: var(--vscode-textPreformat-foreground);
+    border-left: 3px solid var(--vscode-textLink-foreground);
+  }
+
+  .chat-message.agent {
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    border: 1px solid var(--vscode-input-border);
+    align-self: flex-start;
+  }
+
+  .chat-message-header {
+    font-size: 0.75em;
+    opacity: 0.7;
+    margin-bottom: 4px;
+  }
+
+  .chat-message-content {
+    margin-top: 8px;
+    line-height: 1.4;
+    word-wrap: break-word;
+  }
+
+  .chat-message-status {
+    margin-top: 4px;
+    font-size: 0.8em;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+  }
+
+  .chat-input-form {
+    margin-top: 16px;
+    display: flex;
+    gap: 8px;
+  }
+
+  .chat-input {
+    flex: 1;
+    padding: 8px 12px;
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    background: var(--vscode-input-background);
+    color: var(--vscode-input-foreground);
+    font-family: inherit;
+    resize: vertical;
+    min-height: 60px;
+  }
+
+  .chat-send-button {
+    padding: 8px 16px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-family: inherit;
+    align-self: flex-end;
+  }
+
+  .chat-send-button:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .chat-send-button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .empty-chat {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 100%;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+    text-align: center;
+  }
+
+  .json-response {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+
+  .json-header {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--vscode-titleBar-activeForeground);
+  }
+
+  .json-content pre {
+    font-size: 0.85em;
+    color: var(--vscode-descriptionForeground);
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    background-color: var(--vscode-editor-background);
+    padding: 4px;
+    border-radius: 2px;
+  }
+
+  .question-answer-format {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 8px;
+    padding: 16px;
+    margin-top: 8px;
+  }
+
+  .question-section {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    margin-bottom: 16px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--vscode-panel-border);
+  }
+
+  .question-icon {
+    font-size: 1.5em;
+    color: var(--vscode-textLink-foreground);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+
+  .question-text {
+    font-weight: 600;
+    font-size: 1.1em;
+    line-height: 1.4;
+    color: var(--vscode-titleBar-activeForeground);
+    flex: 1;
+  }
+
+  .suggestions-section {
+    background-color: var(--vscode-editor-background);
+    border-radius: 6px;
+  }
+
+  .suggestions-header {
+    font-weight: 600;
+    margin-bottom: 12px;
+    color: var(--vscode-titleBar-activeForeground);
+    font-size: 0.95em;
+  }
+
+  .suggestions-grid {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  .suggestion-button {
+    padding: 10px 14px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 6px;
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.9em;
+    text-align: left;
+    line-height: 1.3;
+    transition: all 0.2s ease;
+    word-wrap: break-word;
+    white-space: normal;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+  }
+
+  .suggestion-button:hover {
+    background: var(--vscode-button-hoverBackground);
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  }
+
+  .suggestion-button:active {
+    transform: translateY(0);
+    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  }
+
+  .interactive-question {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+
+  .question-text {
+    font-weight: 600;
+    margin-bottom: 8px;
+    color: var(--vscode-titleBar-activeForeground);
+  }
+
+  .suggestions {
+    background-color: var(--vscode-editor-background);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    padding: 8px;
+    margin-top: 8px;
+  }
+
+  .suggestions-header {
+    font-weight: 600;
+    margin-bottom: 4px;
+    color: var(--vscode-titleBar-activeForeground);
+  }
+
+  .suggestion-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .suggestion-button {
+    padding: 4px 8px;
+    background: var(--vscode-button-background);
+    color: var(--vscode-button-foreground);
+    border: 1px solid var(--vscode-input-border);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 0.8em;
+    text-align: left;
+    white-space: nowrap;
+  }
+
+  .suggestion-button:hover {
+    background: var(--vscode-button-hoverBackground);
+  }
+
+  .loading-message {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    color: var(--vscode-descriptionForeground);
+    font-style: italic;
+  }
+
+  .loading-spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid var(--vscode-button-foreground);
+    border-radius: 50%;
+    width: 20px;
+    height: 20px;
+    animation: spin 1s linear infinite;
+  }
+
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
+
+  .partial-message {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-style: italic;
+    color: var(--vscode-descriptionForeground);
+  }
+
+  .partial-content {
+    white-space: pre-wrap;
+    word-wrap: break-word;
+  }
+
+  .partial-cursor {
+    animation: blink 1s step-end infinite;
+  }
+
+  @keyframes blink {
+    from, to { color: transparent; }
+    50% { color: var(--vscode-descriptionForeground); }
+  }
 `;
 
 export const AgentMaestroUI = ({
   agents,
   tasks,
+  chatMessages,
+  setChatMessages,
   selectedAgent,
   onSelectAgent,
   onSendToRooCode,
@@ -287,11 +607,19 @@ export const AgentMaestroUI = ({
   wsConnected
 }: AgentMaestroUIProps): JSX.Element => {
   const [message, setMessage] = useState('')
+  const [chatInput, setChatInput] = useState('')
   const [taskType, setTaskType] = useState('codeGeneration')
   const [taskPayload, setTaskPayload] = useState('')
 
-  const selectedAgentData = agents.find(a => a.id === selectedAgent)
-  const agentTasks = tasks.filter(t => t.agentId === selectedAgent)
+  const selectedAgentData = selectedAgent ? agents.find(a => a && a.id === selectedAgent) : null
+  const agentTasks = selectedAgent ? tasks.filter(t => t.agentId === selectedAgent) : []
+  const agentChatMessages = selectedAgent ? chatMessages.filter(m => m.agentId === selectedAgent) : []
+
+  // Filter out any undefined or invalid agents
+  const validAgents = agents.filter(agent => agent && agent.id)
+  
+  // Debug logging to help understand the data
+  console.log('Agents data:', { agents, validAgents, selectedAgent })
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -302,6 +630,18 @@ export const AgentMaestroUI = ({
       setMessage('')
     } catch (error) {
       console.error('Failed to send message:', error)
+    }
+  }
+
+  const handleSendChatMessage = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!selectedAgent || !chatInput.trim()) return
+
+    try {
+      await onSendToRooCode(selectedAgent, chatInput)
+      setChatInput('')
+    } catch (error) {
+      console.error('Failed to send chat message:', error)
     }
   }
 
@@ -337,6 +677,54 @@ export const AgentMaestroUI = ({
     return `${hours}h ago`
   }
 
+  const handleSuggestionClick = async (answer: string) => {
+    if (!selectedAgent) {
+      console.error("No agent selected");
+      return;
+    }
+    
+    try {
+      console.log("🎯 User clicked suggestion:", answer);
+      
+      // Add the selected suggestion as a user message to the chat
+      const suggestionMessage: ChatMessage = {
+        id: `suggestion-${Date.now()}-${answer.substring(0, 20).replace(/\s+/g, '-')}`,
+        agentId: selectedAgent,
+        type: "user",
+        content: answer,
+        timestamp: Date.now(),
+        status: "sending",
+      };
+      
+      // Add to chat immediately
+      setChatMessages((prev) => [...prev, suggestionMessage]);
+      
+      // Send to RooCode
+      await onSendToRooCode(selectedAgent, answer);
+      
+      // Update status to sent
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === suggestionMessage.id ? { ...msg, status: "sent" } : msg
+        )
+      );
+      
+      // Clear chat input
+      setChatInput('');
+      
+      console.log("✅ Suggestion sent successfully");
+    } catch (error) {
+      console.error("❌ Failed to send suggestion:", error);
+      
+      // Update status to error
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.content === answer && msg.type === "user" ? { ...msg, status: "error" } : msg
+        )
+      );
+    }
+  };
+
   return (
     <div className="agent-maestro-ui">
       <style>{styles}</style>
@@ -347,14 +735,14 @@ export const AgentMaestroUI = ({
 
       <div className="main-content">
         <div className="panel">
-          <h2>Connected Agents ({agents.length})</h2>
+          <h2>Connected Agents ({validAgents.length})</h2>
           <div className="agent-list">
-            {agents.length === 0 ? (
+            {validAgents.length === 0 ? (
               <div style={{ textAlign: 'center', color: 'var(--vscode-descriptionForeground)', fontStyle: 'italic' }}>
                 No agents connected
               </div>
             ) : (
-              agents.map(agent => (
+              validAgents.map(agent => (
                 <div
                   key={agent.id}
                   className={`agent-item ${selectedAgent === agent.id ? 'selected' : ''}`}
@@ -367,8 +755,8 @@ export const AgentMaestroUI = ({
                     </div>
                   </div>
                   <div className="agent-details">
-                    <div>Connected: {formatTime(agent.connectedAt)}</div>
-                    <div>Last heartbeat: {getTimeSince(agent.lastHeartbeat)}</div>
+                    <div>Connected: {agent.connectedAt ? formatTime(agent.connectedAt) : 'Unknown'}</div>
+                    <div>Last heartbeat: {agent.lastHeartbeat ? getTimeSince(agent.lastHeartbeat) : 'Unknown'}</div>
                     {agent.gracePeriod && <div>Grace period: Active</div>}
                   </div>
                   {agent.metadata && (
@@ -382,6 +770,129 @@ export const AgentMaestroUI = ({
               ))
             )}
           </div>
+        </div>
+
+        <div className="panel">
+          <h2>Chat with Agent</h2>
+          {!selectedAgent ? (
+            <div className="empty-chat">
+              Select an agent to start chatting
+            </div>
+          ) : (
+            <div className="chat-panel">
+              <div className="chat-messages">
+                {agentChatMessages.length === 0 ? (
+                  <div className="empty-chat">
+                    No messages yet. Start a conversation!
+                  </div>
+                ) : (
+                  agentChatMessages.map(msg => (
+                    <div key={msg.id} className={`chat-message ${msg.type}`} data-agent-id={msg.agentId}>
+                      <div className="chat-message-header">
+                        {msg.type === 'user' ? (
+                          msg.agentId === 'roocode' ? '💬 RooCode User' : 'You'
+                        ) : msg.type === 'loading' ? '🤔 Agent thinking...' : msg.type === 'partial' ? '📝 Agent typing...' : `Agent ${msg.agentId}`} • {formatTime(msg.timestamp)}
+                      </div>
+                      <div className="chat-message-content">
+                        {msg.type === 'loading' ? (
+                          <div className="loading-message">
+                            <div className="loading-spinner"></div>
+                          </div>
+                        ) : msg.type === 'partial' ? (
+                          <div className="partial-message">
+                            <span className="partial-content">{msg.content}</span>
+                            <span className="partial-cursor">▋</span>
+                          </div>
+                        ) : msg.type === 'agent' && msg.content.startsWith('{') ? (
+                          // Handle JSON responses with better formatting
+                          (() => {
+                            try {
+                              const parsed = JSON.parse(msg.content);
+                              
+                              // Check if it's a Question-Answer format
+                              if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
+                                return (
+                                  <div className="question-answer-format">
+                                    <div className="question-section">
+                                      <div className="question-icon">❓</div>
+                                      <div className="question-text">{parsed.question}</div>
+                                    </div>
+                                    <div className="suggestions-section">
+                                      <div className="suggestions-header">Choose an option:</div>
+                                      <div className="suggestions-grid">
+                                        {parsed.suggest.map((suggestion: any, index: number) => (
+                                          <button
+                                            key={index}
+                                            className="suggestion-button"
+                                            onClick={() => handleSuggestionClick(suggestion.answer)}
+                                            title={suggestion.answer}
+                                          >
+                                            {suggestion.answer}
+                                          </button>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
+                              
+                              // Check if it's a regular JSON response
+                              if (parsed.request || parsed.apiProtocol) {
+                                return (
+                                  <div className="json-response">
+                                    <div className="json-header">API Request:</div>
+                                    <pre className="json-content">{JSON.stringify(parsed, null, 2)}</pre>
+                                  </div>
+                                );
+                              }
+                              
+                              // Fallback to generic JSON display
+                              return (
+                                <div className="json-response">
+                                  <div className="json-header">JSON Response:</div>
+                                  <pre className="json-content">{JSON.stringify(parsed, null, 2)}</pre>
+                                </div>
+                              );
+                            } catch (e) {
+                              // If not valid JSON, fall back to regular display
+                              return msg.content;
+                            }
+                          })()
+                        ) : (
+                          // Regular message content
+                          msg.content
+                        )}
+                      </div>
+                      {msg.status && (
+                        <div className="chat-message-status">{msg.status}</div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+              <form onSubmit={handleSendChatMessage} className="chat-input-form">
+                <textarea
+                  className="chat-input"
+                  value={chatInput}
+                  onChange={(e) => setChatInput(e.target.value)}
+                  placeholder="Type your message..."
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.shiftKey) {
+                      e.preventDefault()
+                      handleSendChatMessage(e)
+                    }
+                  }}
+                />
+                <button 
+                  type="submit" 
+                  className="chat-send-button"
+                  disabled={!chatInput.trim()}
+                >
+                  Send
+                </button>
+              </form>
+            </div>
+          )}
         </div>
 
         <div className="panel">

@@ -5,7 +5,10 @@ export enum EMessageFromServer {
   Error = "error",
   TaskAssigned = "taskAssigned",
   AgentList = "agentList",
+  AgentUpdate = "agentUpdate",
   RooCodeMessage = "rooCodeMessage",
+  RooCodeResponse = "rooCodeResponse",
+  RooCodePartial = "rooCodePartial",
   CreateTask = "createTask",
 }
 
@@ -29,6 +32,7 @@ export enum EMessageFromAgent {
   // TaskResult = "taskResult",
   Pong = "pong",
   Ping = "ping",
+  RooCodeResponse = "rooCodeResponse",
 }
 
 export type TMessage =
