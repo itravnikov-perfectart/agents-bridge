@@ -50,8 +50,15 @@ export async function activate(context: vscode.ExtensionContext) {
             throw new Error("Controller not initialized");
           }
           const systemInfo = getSystemInfo(controller);
+          const agentId = controller.getAgentId();
+          const statusMessage = {
+            ...systemInfo,
+            agentId: agentId,
+            workspacePath: controller.getWorkspacePath(),
+            isConnected: controller.isWebSocketConnected()
+          };
           vscode.window.showInformationMessage(
-            JSON.stringify(systemInfo, null, 2),
+            JSON.stringify(statusMessage, null, 2),
           );
         } catch (error) {
           logger.error("Error retrieving system information:", error);

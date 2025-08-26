@@ -46,7 +46,8 @@ export class ExtensionController extends EventEmitter {
 
   constructor(workspacePath?: string) {
     super();
-    // Docker initialization removed
+    // Generate unique agentId for this controller instance
+    this.currentAgentId = uuidv4();
     this.workspacePath = workspacePath || "";
     this.initializeRooAdapters(this.currentConfig);
   }
@@ -430,6 +431,23 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
+   * Get the unique agent ID for this controller
+   */
+  public getAgentId(): string {
+    if (!this.currentAgentId) {
+      throw new Error("Controller not properly initialized - missing agentId");
+    }
+    return this.currentAgentId;
+  }
+
+  /**
+   * Check if WebSocket is connected
+   */
+  public isWebSocketConnected(): boolean {
+    return this.ws?.readyState === WebSocket.OPEN;
+  }
+
+  /**
    * Check if controller is busy (has active tasks)
    */
   public isBusy(): boolean {
@@ -454,8 +472,10 @@ export class ExtensionController extends EventEmitter {
 
       // establish a connection to the websocket server
       this.ws = new WebSocket(`ws://localhost:${port}`);
-      const agentId = uuidv4();
-      this.currentAgentId = agentId;
+      if (!this.currentAgentId) {
+        throw new Error("Controller not properly initialized - missing agentId");
+      }
+      const agentId = this.currentAgentId;
 
       this.ws.onopen = () => {
         logger.info(`Connected to WebSocket server on port ${port}`);
@@ -469,6 +489,8 @@ export class ExtensionController extends EventEmitter {
             name: "extension-controller",
             version: "1.0.0",
             capabilities: ["roocode-integration", "task-execution"],
+            workspacePath: this.workspacePath,
+            agentId: agentId, // Include agentId in metadata for server reference
           },
         };
 
