@@ -1,11 +1,11 @@
 import { logger } from "../utils/serverLogger";
 import {
-  EConnectionType,
+  EConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
 } from "./message.enum";
 import {
-  AgentConnection,
+  Agent,
   IMessageFromAgent,
   IMessageFromServer,
 } from "./types";
@@ -13,7 +13,7 @@ import { v4 as uuidv4 } from "uuid";
 import { WebSocket } from "ws";
 
 export class AgentManager {
-  public agents = new Map<string, AgentConnection>();
+  public agents = new Map<string, Agent>();
   private pingInterval: number;
   private heartbeatTimeout: number;
   private pingIntervalId?: NodeJS.Timeout;
@@ -31,9 +31,9 @@ export class AgentManager {
       id: agentId,
       socket,
       lastHeartbeat: now,
-      lastPingSent: now,
+      
       connectedAt: now,
-      gracePeriod: true, // Don't ping immediately, give client time to establish
+      gracePeriod: 30000, // Don't ping immediately, give client time to establish
       metadata,
     });
     logger.info(`Agent ${agentId} registered with metadata:`, metadata);
@@ -42,7 +42,7 @@ export class AgentManager {
     setTimeout(() => {
       const agent = this.agents.get(agentId);
       if (agent) {
-        agent.gracePeriod = false;
+        agent.gracePeriod = 0;
         logger.info(
           `Grace period ended for agent ${agentId}, will now send pings`,
         );
@@ -58,9 +58,9 @@ export class AgentManager {
       id: agentId,
       socket,
       lastHeartbeat: now,
-      lastPingSent: now,
+      
       connectedAt: now,
-      gracePeriod: true, // Don't ping immediately, give client time to establish
+      gracePeriod: 30000, // Don't ping immediately, give client time to establish
       metadata,
     });
     logger.info(`Agent ${agentId} registered with metadata:`, metadata);
@@ -69,7 +69,7 @@ export class AgentManager {
     setTimeout(() => {
       const agent = this.agents.get(agentId);
       if (agent) {
-        agent.gracePeriod = false;
+        agent.gracePeriod = 0;
         logger.info(`Grace period ended for agent ${agentId}, will now send pings`);
       }
     }, 30000);
@@ -82,7 +82,7 @@ export class AgentManager {
     const now = Date.now();
     this.agents.forEach((agent, id) => {
       // Skip agents in grace period
-      if (agent.gracePeriod) {
+      if (agent.gracePeriod > 0) {
         logger.info(`Agent ${id} in grace period, skipping ping`);
         return;
       }
@@ -96,7 +96,7 @@ export class AgentManager {
             },
           };
           agent.socket.send(JSON.stringify(messageToSend));
-          agent.lastPingSent = now;
+          
           logger.info(`Ping sent to agent ${id} at ${now}`);
         } catch (error) {
           logger.error(`Failed to send ping to agent ${id}:`, error);
@@ -137,7 +137,7 @@ export class AgentManager {
     }
   }
 
-  getAgent(agentId: string): AgentConnection | undefined {
+  getAgent(agentId: string): Agent | undefined {
     return this.agents.get(agentId);
   }
 

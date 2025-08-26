@@ -2,11 +2,12 @@ import { WebSocket, WebSocketServer } from "ws";
 import { logger } from "../utils/serverLogger";
 import { AgentManager } from "./agent-manager";
 import {
-  EConnectionType,
+  EConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
   EMessageFromUI,
   EMessageToServer,
+  ERooCodeCommand,
 } from "./message.enum";
 import {
   IMessageFromAgent,
@@ -44,7 +45,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
   wss.on("connection", (socket: WebSocket, req) => {
     logger.info(`🔗 New connection from ${req}`);
-    let connectionType: EConnectionType | undefined;
+    let connectionType: EConnectionSource | undefined;
     let agentId: string | undefined;
 
     socket.on("message", (data) => {
@@ -56,7 +57,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
           `Received message from ${req.socket.remoteAddress}: ${JSON.stringify(message)}`,
         );
 
-        if (connectionType === EConnectionType.UI) {
+        if (connectionType === EConnectionSource.UI) {
           // Add UI client to tracking set
           uiClients.add(socket);
           logger.info(
@@ -68,7 +69,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             agentManager,
             uiClients,
           );
-        } else if (connectionType === EConnectionType.Agent) {
+        } else if (connectionType === EConnectionSource.Agent) {
           agentId = (message as IMessageFromAgent).agentId;
 
           handleAgentConnection(
@@ -87,7 +88,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
     socket.on("close", (code, reason) => {
       switch (connectionType) {
-        case EConnectionType.Agent:
+        case EConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
             broadcastAgentUpdate(
@@ -106,7 +107,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             );
           }
           break;
-        case EConnectionType.UI:
+        case EConnectionSource.UI:
           uiClients.delete(socket);
           logger.info(
             `UI client disconnected, code: ${code}, reason: ${reason}. Total UI clients: ${uiClients.size}`,
@@ -122,7 +123,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
     socket.on("error", (error) => {
       switch (connectionType) {
-        case EConnectionType.Agent:
+        case EConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
             broadcastAgentUpdate(
@@ -137,7 +138,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             logger.error(`WebSocket error for agent:`, error);
           }
           break;
-        case EConnectionType.UI:
+        case EConnectionSource.UI:
           logger.error(`WebSocket error for UI connection:`, error);
           break;
         default:
@@ -173,6 +174,47 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
 export type WebSocketServerInstance = ReturnType<typeof createWebSocketServer>;
 
+/**
+ * Handle RooCode commands from UI and forward them to the appropriate agent
+ */
+const handleRooCodeCommandFromUI = (
+  message: IMessageFromUI,
+  socket: WebSocket,
+  agentManager: AgentManager,
+  uiClients: Set<WebSocket>,
+) => {
+  const { details } = message;
+  const agentId = details?.agentId;
+  
+  if (!agentId) {
+    logger.warn("RooCode command received but no agentId specified");
+    return;
+  }
+
+  const agent = agentManager.agents.get(agentId);
+  if (!agent) {
+    logger.warn(`Agent ${agentId} not found for RooCode command`);
+    return;
+  }
+
+  // Forward the RooCode command to the agent
+  const commandMessage: IMessageFromServer = {
+    messageType: EMessageFromServer.RooCodeCommand,
+    details: {
+      command: details.command,
+      parameters: details.parameters,
+      extensionId: details.extensionId,
+    },
+    timestamp: Date.now(),
+  };
+
+  logger.info(
+    `[DEBUG] Server forwarding RooCode command [${details.command}] to agent ${agentId}: ${JSON.stringify(commandMessage)}`,
+  );
+  
+  agent.socket.send(JSON.stringify(commandMessage));
+};
+
 const handleUIConnection = (
   message: IMessageFromUI,
   socket: WebSocket,
@@ -206,6 +248,12 @@ const handleUIConnection = (
     case EMessageFromUI.SendToRooCode:
       const agentId = message.details?.agentId;
       const messageFromUI = message.details?.message;
+      
+      if (!agentId) {
+        logger.warn("SendToRooCode received but no agentId specified");
+        return;
+      }
+      
       const agentToSendMessage = agentManager.agents.get(agentId);
       if (!agentToSendMessage) {
         logger.warn(`Agent ${agentId} not found for RooCode message`);
@@ -266,6 +314,116 @@ const handleUIConnection = (
       logger.info(`Received message from UI: ${messageType} which is not handled`);
       break;
 
+    // Handle RooCode commands from UI
+    case EMessageFromUI.RooCodeCommand:
+      handleRooCodeCommandFromUI(message, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.GetRooCodeStatus:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.GetStatus }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.GetRooCodeConfiguration:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.GetConfiguration }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.SetRooCodeConfiguration:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.SetConfiguration }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.GetRooCodeProfiles:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.GetProfiles }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.CreateRooCodeProfile:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.CreateProfile }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.UpdateRooCodeProfile:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.UpdateProfile }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.DeleteRooCodeProfile:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.DeleteProfile }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.SetRooCodeActiveProfile:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.SetActiveProfile }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.GetRooCodeTaskHistory:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.GetTaskHistory }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.GetRooCodeTaskDetails:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.GetTaskDetails }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.ClearRooCodeCurrentTask:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.ClearCurrentTask }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.CancelRooCodeCurrentTask:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.CancelCurrentTask }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.ResumeRooCodeTask:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.ResumeTask }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.PressRooCodePrimaryButton:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.PressPrimaryButton }
+      }, socket, agentManager, uiClients);
+      break;
+    case EMessageFromUI.PressRooCodeSecondaryButton:
+      handleRooCodeCommandFromUI({
+        ...message,
+        messageType: EMessageFromUI.RooCodeCommand,
+        details: { ...message.details, command: ERooCodeCommand.PressSecondaryButton }
+      }, socket, agentManager, uiClients);
+      break;
+
     //   const agentIdToCreateTask = message.details?.agentId;
     //   const agentToAssignTask = agentManager.agents.get(agentIdToCreateTask);
     //   if (!agentToAssignTask) {
@@ -287,7 +445,7 @@ const handleUIConnection = (
     //     `Assigned task ${message.details?.task.id} to agent ${agentIdToCreateTask}`,
     //     );
     //   break;
-    case EMessageToServer.Register:
+    case EMessageFromUI.Register:
       logger.info(`UI client connected`);
       const messageRegistered: IMessageFromServer = {
         messageType: EMessageFromServer.Registered,
@@ -295,7 +453,7 @@ const handleUIConnection = (
       };
       socket.send(JSON.stringify(messageRegistered));
       break;
-    case EMessageToServer.Unregister:
+    case EMessageFromUI.Unregister:
       logger.info(`UI client disconnected`);
       const messageUnregistered: IMessageFromServer = {
         messageType: EMessageFromServer.Unregistered,
@@ -367,12 +525,12 @@ const handleAgentConnection = (
   } catch {}
 
   switch (messageType) {
-    case EMessageToServer.Register:
+    case EMessageFromAgent.Register:
       // Use the agent's provided ID instead of generating a new one
       const registredAgentId = agentManager.registerAgentWithId(
         agentId, // Use the agent's provided ID
         socket,
-        message.metadata,
+        message.details,
       );
       const totalAgentsAfterReg = agentManager.agents.size;
       logger.info(
@@ -387,7 +545,9 @@ const handleAgentConnection = (
 
       const messageRegistered: IMessageFromServer = {
         messageType: EMessageFromServer.Registered,
-        agentId: registredAgentId,
+        details: {
+          agentId: registredAgentId,
+        },
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageRegistered));
@@ -492,7 +652,7 @@ const handleAgentConnection = (
         `Forwarded RooCode ${isPartial ? "partial" : "final"} response from agent ${agentId}${extensionId ? ` (ext ${extensionId})` : ""} to ${uiClients.size} UI clients: ${(message as any).details?.response}`,
       );
       break;
-    case EMessageToServer.Unregister:
+    case EMessageFromAgent.Unregister:
       agentManager.removeAgent(agentId);
       logger.info(`Agent disconnected: ${agentId}`);
       socket.close();

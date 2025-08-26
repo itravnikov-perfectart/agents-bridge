@@ -1,7 +1,7 @@
 import { RooCodeEventName } from "@roo-code/types";
 import * as vscode from "vscode";
-import { TaskEvent } from "./server/types";
 import { logger } from "./utils/logger";
+import { TaskEvent } from "./core/types";
 import { getSystemInfo } from "./utils/systemInfo";
 
 import { Commands } from "./commands";

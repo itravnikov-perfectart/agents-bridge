@@ -1,12 +1,17 @@
-import { RooCodeEventName } from "@roo-code/types";
-import { WebSocket } from "ws";
-import {
-  EConnectionType,
-  EMessageFromAgent,
-  EMessageFromServer,
-  EMessageFromUI,
-  EMessageToServer,
-} from "./message.enum";
+import { EConnectionSource, EMessageFromAgent, EMessageFromServer, EMessageFromUI } from "./message.enum";
+import { RooCodeEventName, TaskEvent } from "@roo-code/types";
+
+export interface Message {
+  type: EMessageFromAgent | EMessageFromUI | EMessageFromServer;
+  source: EConnectionSource;
+  timestamp?: number;
+  agent?: {
+    id: string;
+    workspacePath: string;
+  }
+  data: Record<string, any>;
+  event?: TaskEvent;
+}
 
 export interface AuthMessage {
   type: "authenticate";
@@ -16,11 +21,6 @@ export interface AuthMessage {
 export interface AuthError {
   code: number;
   message: string;
-}
-
-export interface TaskEvent<T = RooCodeEventName> {
-  name: T;
-  data: any;
 }
 
 export interface ProcessEvent {
@@ -92,14 +92,24 @@ export interface WebSocketConfig {
   connectionTimeout?: number;
 }
 
-export interface AgentConnection {
+export interface Agent {
   id: string;
-  socket: WebSocket;
+  socket: any;
   lastHeartbeat: number;
-  lastPingSent: number;
   connectedAt: number;
-  gracePeriod?: boolean;
-  metadata?: Record<string, unknown>;
+  metadata?: {
+    workspacePath?: string;
+    agentId?: string;
+  };
+  gracePeriod: number;
+}
+
+export interface AgentMaestroConfiguration {
+  defaultRooIdentifier: string;
+  rooVariantIdentifiers: string[];
+  websocketPort: number;
+  redisConfig?: RedisConfig;
+  workerConfig?: WorkerConfig;
 }
 
 // Redis/bullmq removed from extension side
@@ -112,40 +122,76 @@ export interface RedisConfig {
 }
 
 export interface WorkerConfig {
-  queueName: string;
-  redis: RedisConfig;
-  concurrency?: number;
+  concurrency: number;
+  timeout: number;
 }
 
-export interface IMessageToServer<D = Record<string, any>> {
-  metadata?: Record<string, unknown>;
-  details?: D;
-}
-
-export interface IMessageFromUI extends IMessageToServer {
-  messageType: EMessageFromUI | EMessageToServer;
-  connectionType: EConnectionType.UI;
-}
-
-export interface IMessageFromAgent
-  extends IMessageToServer<{
-    taskId?: string;
-    taskType?: string;
-    workspacePath?: string;
-    extensionId?: string;
-    partial?: boolean;
-    response?: string;
-    timestamp?: number;
-  }> {
-  messageType: EMessageFromAgent | EMessageToServer;
-  connectionType: EConnectionType.Agent;
+export interface IMessageFromAgent {
+  messageType: EMessageFromAgent;
+  connectionType: EConnectionSource;
   agentId: string;
+  details: {
+    extensionId?: string;
+    isReady?: boolean;
+    lastHeartbeat?: number;
+    activeTaskIds?: string[];
+    configuration?: any;
+    profiles?: string[];
+    activeProfile?: string;
+    taskHistory?: any[];
+    event?: any;
+    eventName?: string;
+    eventData?: any[];
+    timestamp?: number;
+    [key: string]: any;
+  };
 }
 
-export interface IMessageFromServer extends IMessageToServer {
+export interface IMessageFromServer {
   messageType: EMessageFromServer;
-  agentId?: string;
+  details?: {
+    agents?: any[];
+    message?: string;
+    command?: string;
+    parameters?: any;
+    extensionId?: string;
+    task?: any;
+    timestamp?: number;
+    [key: string]: any;
+  };
   timestamp?: number;
 }
 
-export type TMessageToServer = IMessageFromUI | IMessageFromAgent;
+export interface IMessageFromUI {
+  messageType: EMessageFromUI;
+  connectionType: EConnectionSource;
+  details?: {
+    agentId?: string;
+    message?: string;
+    options?: any;
+    [key: string]: any;
+  };
+}
+
+export interface TMessageToServer {
+  messageType: EMessageFromUI | EMessageFromAgent;
+  connectionType: EConnectionSource;
+  agentId?: string;
+  details?: Record<string, any>;
+}
+
+export interface IRooCodeCommand {
+  command: string;
+  extensionId?: string;
+  parameters?: any;
+  taskId?: string;
+}
+
+export interface IRooCodeCommandResponse {
+  command: string;
+  success: boolean;
+  result?: any;
+  error?: string;
+  extensionId?: string;
+  taskId?: string;
+}

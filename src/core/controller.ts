@@ -4,10 +4,7 @@ import * as path from "path";
 import * as vscode from "vscode";
 // Note: Using global WebSocket API available in VS Code extension host
 import { Commands } from "../commands";
-import {
-  IMessageFromAgent,
-  IMessageFromServer,
-} from "../server/types";
+import { IMessageFromAgent, IMessageFromServer } from "../server/types";
 import {
   AgentMaestroConfiguration,
   DEFAULT_CONFIG,
@@ -16,12 +13,14 @@ import {
 import { logger } from "../utils/logger";
 import { ExtensionStatus } from "../utils/systemInfo";
 import { RooCodeAdapter } from "./RooCodeAdapter";
+import { RooCodeEventBroadcaster } from "./RooCodeEventBroadcaster";
 import { AgentStatus } from "./types";
 import {
-  EConnectionType,
+  EConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
   EMessageToServer,
+  ERooCodeCommand,
 } from "../server/message.enum";
 import { RooCodeEventName, TaskEvent } from "@roo-code/types";
 
@@ -32,7 +31,8 @@ import { v4 as uuidv4 } from "uuid";
  * Provides unified API access and can be used by both VSCode extension and local server
  */
 export class ExtensionController extends EventEmitter {
-  public readonly rooAdapterMap: Map<string, RooCodeAdapter> = new Map();
+  public readonly rooAdapterMap: Map<string, RooCodeEventBroadcaster> =
+    new Map();
   private currentConfig: AgentMaestroConfiguration = readConfiguration();
   public isInitialized = false;
   private activeTaskListeners: Map<string, vscode.Disposable> = new Map();
@@ -50,6 +50,8 @@ export class ExtensionController extends EventEmitter {
     this.currentAgentId = uuidv4();
     this.workspacePath = workspacePath || "";
     this.initializeRooAdapters(this.currentConfig);
+
+    // No periodic broadcasts - events are broadcast immediately when they occur
   }
 
   /**
@@ -59,19 +61,23 @@ export class ExtensionController extends EventEmitter {
     // Check and create adapter for default RooCode extension
     if (this.isExtensionInstalled(config.defaultRooIdentifier)) {
       const defaultAdapter = new RooCodeAdapter(config.defaultRooIdentifier);
-      // Wire immediate forwarding of ANY Roo event arriving to the adapter
-      defaultAdapter.onEvent = (event) => {
+      const defaultWrapper = new RooCodeEventBroadcaster(defaultAdapter);
+
+      // Set up raw event broadcasting
+      defaultWrapper.setRawEventCallback((eventName, ...args) => {
         try {
-          const serialized = JSON.stringify(event);
-          const adapterExtensionId = defaultAdapter.getExtensionId();
-          const isPartial = !!(event as any)?.data?.message?.partial;
-          this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+          const adapterExtensionId = defaultWrapper.getExtensionId();
+          // Broadcast the raw, untransformed RooCode event
+          this.broadcastRawRooCodeEvent(eventName, args, adapterExtensionId);
         } catch (err) {
-          logger.warn("Failed to forward adapter event immediately", err);
+          logger.warn("Failed to forward raw adapter event immediately", err);
         }
-      };
-      this.rooAdapterMap.set(config.defaultRooIdentifier, defaultAdapter);
-      logger.info(`Added RooCode adapter for: ${config.defaultRooIdentifier}`);
+      });
+
+      this.rooAdapterMap.set(config.defaultRooIdentifier, defaultWrapper);
+      logger.info(
+        `Added RooCode adapter wrapper for: ${config.defaultRooIdentifier}`,
+      );
     } else {
       logger.warn(`Extension not found: ${config.defaultRooIdentifier}`);
     }
@@ -86,18 +92,21 @@ export class ExtensionController extends EventEmitter {
         this.isExtensionInstalled(identifier)
       ) {
         const adapter = new RooCodeAdapter(identifier);
-        adapter.onEvent = (event) => {
+        const wrapper = new RooCodeEventBroadcaster(adapter);
+
+        // Set up raw event broadcasting
+        wrapper.setRawEventCallback((eventName, ...args) => {
           try {
-            const serialized = JSON.stringify(event);
-            const adapterExtensionId = adapter.getExtensionId();
-            const isPartial = !!(event as any)?.data?.message?.partial;
-            this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+            const adapterExtensionId = wrapper.getExtensionId();
+            // Broadcast the raw, untransformed RooCode event
+            this.broadcastRawRooCodeEvent(eventName, args, adapterExtensionId);
           } catch (err) {
-            logger.warn("Failed to forward adapter event immediately", err);
+            logger.warn("Failed to forward raw adapter event immediately", err);
           }
-        };
-        this.rooAdapterMap.set(identifier, adapter);
-        logger.info(`Added RooCode adapter for: ${identifier}`);
+        });
+
+        this.rooAdapterMap.set(identifier, wrapper);
+        logger.info(`Added RooCode adapter wrapper for: ${identifier}`);
       } else if (identifier !== config.defaultRooIdentifier) {
         logger.warn(`Extension not found: ${identifier}`);
       }
@@ -112,9 +121,9 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
-   * Get RooCode adapter for specific extension ID
+   * Get RooCode adapter wrapper for specific extension ID
    */
-  getRooAdapter(extensionId?: string): RooCodeAdapter | undefined {
+  getRooAdapter(extensionId?: string): RooCodeEventBroadcaster | undefined {
     return this.rooAdapterMap.get(
       extensionId || this.currentConfig.defaultRooIdentifier,
     );
@@ -166,7 +175,11 @@ export class ExtensionController extends EventEmitter {
                 data: event.data,
               });
               const isPartial = !!event?.data?.message?.partial;
-              this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+              this.sendRooCodeEventToServer(
+                serialized,
+                isPartial,
+                adapterExtensionId,
+              );
             } catch (e) {
               logger.warn("Failed to serialize RooCode event for broadcast", e);
             }
@@ -181,12 +194,16 @@ export class ExtensionController extends EventEmitter {
     }
 
     if (!adapter.isActive) {
-      logger.error(`RooCode adapter is not active for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`);
+      logger.error(
+        `RooCode adapter is not active for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`,
+      );
       return;
     }
 
     try {
-      logger.info(`Opening RooCode with message (${extensionId || this.currentConfig.defaultRooIdentifier}): ${message}`);
+      logger.info(
+        `Opening RooCode with message (${extensionId || this.currentConfig.defaultRooIdentifier}): ${message}`,
+      );
 
       // The sendMessage method opens RooCode with the text and returns an async generator
       // We'll consume the generator to handle any events but don't need to wait for completion
@@ -259,9 +276,12 @@ export class ExtensionController extends EventEmitter {
   // Docker container methods removed from extension
 
   /**
-   * Setup message handlers for RooCode adapter
+   * Setup message handlers for RooCode adapter wrapper
    */
-  private setupRooMessageHandlers(id: string, adapter: RooCodeAdapter): void {
+  private setupRooMessageHandlers(
+    id: string,
+    adapter: RooCodeEventBroadcaster,
+  ): void {
     const commandName = `${Commands.ExecuteRooResult}-${id}`;
 
     // First remove existing command if any
@@ -350,7 +370,7 @@ export class ExtensionController extends EventEmitter {
     // Roo variants status
     for (const [extensionId, adapter] of this.rooAdapterMap) {
       status[extensionId] = {
-        isInstalled: adapter?.isInstalled() ?? false,
+        isInstalled: adapter?.isInstalled ?? false,
         isActive: adapter?.isActive ?? false,
         version: adapter?.getVersion(),
       };
@@ -388,7 +408,6 @@ export class ExtensionController extends EventEmitter {
   async getTaskStatus(_taskId: string): Promise<any> {
     throw new Error("Task queue is not available in the extension build");
   }
-
 
   async dispose(): Promise<void> {
     // No task queue in extension
@@ -473,7 +492,9 @@ export class ExtensionController extends EventEmitter {
       // establish a connection to the websocket server
       this.ws = new WebSocket(`ws://localhost:${port}`);
       if (!this.currentAgentId) {
-        throw new Error("Controller not properly initialized - missing agentId");
+        throw new Error(
+          "Controller not properly initialized - missing agentId",
+        );
       }
       const agentId = this.currentAgentId;
 
@@ -482,10 +503,10 @@ export class ExtensionController extends EventEmitter {
 
         // Identify as an agent
         const registrationMessage: IMessageFromAgent = {
-          messageType: EMessageToServer.Register,
-          connectionType: EConnectionType.Agent,
+          messageType: EMessageFromAgent.Register,
+          connectionType: EConnectionSource.Agent,
           agentId,
-          metadata: {
+          details: {
             name: "extension-controller",
             version: "1.0.0",
             capabilities: ["roocode-integration", "task-execution"],
@@ -511,7 +532,7 @@ export class ExtensionController extends EventEmitter {
             case EMessageFromServer.Ping:
               const pongMessage: IMessageFromAgent = {
                 messageType: EMessageFromAgent.Pong,
-                connectionType: EConnectionType.Agent,
+                connectionType: EConnectionSource.Agent,
                 agentId: agentId,
                 details: {
                   timestamp: message.timestamp,
@@ -545,6 +566,25 @@ export class ExtensionController extends EventEmitter {
               } else {
                 logger.warn(
                   "RooCode message received but no message content found",
+                );
+              }
+              break;
+
+            case EMessageFromServer.RooCodeCommand:
+              logger.info(
+                `[DEBUG] Agent ${this.currentAgentId} processing RooCode command from WebSocket server: ${messageData}`,
+              );
+              // Handle RooCode command
+              if (message.details?.command) {
+                const { command, parameters, extensionId } = message.details;
+                await this.handleRooCodeCommand(
+                  command,
+                  parameters,
+                  extensionId,
+                );
+              } else {
+                logger.warn(
+                  "RooCode command received but no command found in details",
                 );
               }
               break;
@@ -584,7 +624,64 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
-   * Send RooCode response back to WebSocket server for UI chat
+   * Broadcast raw, untransformed RooCode event to WebSocket server
+   */
+  private broadcastRawRooCodeEvent(
+    eventName: string,
+    args: any[],
+    extensionId?: string,
+  ): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return; // Silently return if not connected
+    }
+
+    // Create message with the raw event structure
+    const eventMessage: IMessageFromAgent = {
+      messageType: EMessageFromAgent.RooCodeEvent,
+      connectionType: EConnectionSource.Agent,
+      agentId: this.currentAgentId || "unknown-agent",
+      details: {
+        eventName: eventName,
+        eventData: args,
+        extensionId,
+        timestamp: Date.now(),
+      },
+    };
+
+    logger.info(
+      `Broadcasting raw RooCode event [${eventName}] to server [ext=${extensionId}]: ${JSON.stringify(args)}`,
+    );
+    this.ws.send(JSON.stringify(eventMessage));
+  }
+
+  /**
+   * Broadcast full, untransformed RooCode event to WebSocket server
+   */
+  private broadcastRooCodeEvent(event: any, extensionId?: string): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      return; // Silently return if not connected
+    }
+
+    // Create message with the full event structure
+    const eventMessage: IMessageFromAgent = {
+      messageType: EMessageFromAgent.RooCodeEvent,
+      connectionType: EConnectionSource.Agent,
+      agentId: this.currentAgentId || "unknown-agent",
+      details: {
+        event: event, // Full event structure
+        extensionId,
+        timestamp: Date.now(),
+      },
+    };
+
+    logger.info(
+      `Broadcasting full RooCode event [${event.name}] to server [ext=${extensionId}]: ${JSON.stringify(event)}`,
+    );
+    this.ws.send(JSON.stringify(eventMessage));
+  }
+
+  /**
+   * Send RooCode response back to WebSocket server for UI chat (legacy method)
    */
   private sendRooCodeEventToServer(
     response: string,
@@ -598,7 +695,7 @@ export class ExtensionController extends EventEmitter {
 
     const responseMessage: IMessageFromAgent = {
       messageType: EMessageFromAgent.RooCodeResponse,
-      connectionType: EConnectionType.Agent,
+      connectionType: EConnectionSource.Agent,
       agentId: this.currentAgentId || "unknown-agent",
       details: {
         response,
@@ -612,6 +709,380 @@ export class ExtensionController extends EventEmitter {
       `Sending RooCode ${partial ? "partial" : "final"} response to server [ext=${extensionId}]: ${response}`,
     );
     this.ws.send(JSON.stringify(responseMessage));
+  }
+
+  /**
+   * Handle RooCode commands from WebSocket server
+   */
+  private async handleRooCodeCommand(
+    command: string,
+    parameters?: any,
+    extensionId?: string,
+  ): Promise<void> {
+    try {
+      const adapter = this.getRooAdapter(extensionId);
+      if (!adapter) {
+        this.sendRooCodeCommandResponse(
+          command,
+          false,
+          `No RooCode adapter found for extension: ${extensionId || "default"}`,
+          extensionId,
+        );
+        return;
+      }
+
+      let result: any;
+      let success = true;
+      let error: string | undefined;
+
+      try {
+        switch (command) {
+          case ERooCodeCommand.GetStatus:
+            result = {
+              isReady: adapter.isReady(),
+              lastHeartbeat: adapter.lastHeartbeat,
+              activeTaskIds: adapter.getActiveTaskIds(),
+              extensionId: adapter.getExtensionId(),
+            };
+            break;
+
+          case ERooCodeCommand.GetConfiguration:
+            result = adapter.getConfiguration();
+            break;
+
+          case ERooCodeCommand.SetConfiguration:
+            if (parameters?.configuration) {
+              await adapter.setConfiguration(parameters.configuration);
+              result = { success: true, message: "Configuration updated" };
+            } else {
+              throw new Error("Configuration parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.GetProfiles:
+            result = adapter.getProfiles();
+            break;
+
+          case ERooCodeCommand.GetActiveProfile:
+            result = adapter.getActiveProfile();
+            break;
+
+          case ERooCodeCommand.SetActiveProfile:
+            if (parameters?.name) {
+              result = await adapter.setActiveProfile(parameters.name);
+            } else {
+              throw new Error("Profile name parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.CreateProfile:
+            if (parameters?.name && parameters?.profile) {
+              result = await adapter.createProfile(
+                parameters.name,
+                parameters.profile,
+                parameters.activate,
+              );
+            } else {
+              throw new Error("Profile name and profile parameters required");
+            }
+            break;
+
+          case ERooCodeCommand.UpdateProfile:
+            if (parameters?.name && parameters?.profile) {
+              result = await adapter.updateProfile(
+                parameters.name,
+                parameters.profile,
+                parameters.activate,
+              );
+            } else {
+              throw new Error("Profile name and profile parameters required");
+            }
+            break;
+
+          case ERooCodeCommand.DeleteProfile:
+            if (parameters?.name) {
+              await adapter.deleteProfile(parameters.name);
+              result = { success: true, message: "Profile deleted" };
+            } else {
+              throw new Error("Profile name parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.GetTaskHistory:
+            result = adapter.getTaskHistory();
+            break;
+
+          case ERooCodeCommand.GetTaskDetails:
+            if (parameters?.taskId) {
+              result = await adapter.getTaskWithId(parameters.taskId);
+            } else {
+              throw new Error("Task ID parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.ClearCurrentTask:
+            if (parameters?.lastMessage) {
+              await adapter.clearCurrentTask(parameters.lastMessage);
+            } else {
+              await adapter.clearCurrentTask();
+            }
+            result = { success: true, message: "Current task cleared" };
+            break;
+
+          case ERooCodeCommand.CancelCurrentTask:
+            await adapter.cancelCurrentTask();
+            result = { success: true, message: "Current task cancelled" };
+            break;
+
+          case ERooCodeCommand.ResumeTask:
+            if (parameters?.taskId) {
+              result = await adapter.resumeTask(parameters.taskId);
+            } else {
+              throw new Error("Task ID parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.PressPrimaryButton:
+            await adapter.pressPrimaryButton();
+            result = { success: true, message: "Primary button pressed" };
+            break;
+
+          case ERooCodeCommand.PressSecondaryButton:
+            await adapter.pressSecondaryButton();
+            result = { success: true, message: "Secondary button pressed" };
+            break;
+
+          case ERooCodeCommand.SendMessage:
+            if (parameters?.message) {
+              const events: any[] = [];
+              for await (const event of adapter.sendMessage(
+                parameters.message,
+                parameters.images,
+                parameters.options,
+              )) {
+                events.push(event);
+              }
+              result = { events, message: "Message sent successfully" };
+            } else {
+              throw new Error("Message parameter required");
+            }
+            break;
+
+          case ERooCodeCommand.StartNewTask:
+            if (parameters?.options) {
+              const events: any[] = [];
+              for await (const event of adapter.startNewTask(
+                parameters.options,
+              )) {
+                events.push(event);
+              }
+              result = { events, message: "New task started successfully" };
+            } else {
+              throw new Error("Task options parameter required");
+            }
+            break;
+
+          default:
+            throw new Error(`Unknown RooCode command: ${command}`);
+        }
+      } catch (cmdError) {
+        success = false;
+        error = (cmdError as Error).message;
+        logger.error(`RooCode command '${command}' failed:`, cmdError);
+      }
+
+      this.sendRooCodeCommandResponse(
+        command,
+        success,
+        error,
+        extensionId,
+        result,
+      );
+    } catch (error) {
+      logger.error(`Error handling RooCode command '${command}':`, error);
+      this.sendRooCodeCommandResponse(
+        command,
+        false,
+        (error as Error).message,
+        extensionId,
+      );
+    }
+  }
+
+  /**
+   * Send RooCode command response to WebSocket server
+   */
+  private sendRooCodeCommandResponse(
+    command: string,
+    success: boolean,
+    error?: string,
+    extensionId?: string,
+    result?: any,
+  ): void {
+    if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+      logger.warn(
+        "WebSocket not connected, cannot send RooCode command response",
+      );
+      return;
+    }
+
+    const responseMessage: IMessageFromAgent = {
+      messageType: EMessageFromAgent.RooCodeCommandResponse,
+      connectionType: EConnectionSource.Agent,
+      agentId: this.currentAgentId || "unknown-agent",
+      details: {
+        command,
+        success,
+        error,
+        result,
+        extensionId,
+        timestamp: Date.now(),
+      },
+    };
+
+    logger.info(
+      `Sending RooCode command response [${command}] success=${success} [ext=${extensionId}]: ${error || "OK"}`,
+    );
+    this.ws.send(JSON.stringify(responseMessage));
+  }
+
+  /**
+   * Broadcast RooCode status update to WebSocket server
+   */
+  public broadcastRooCodeStatus(extensionId?: string): void {
+    try {
+      const adapter = this.getRooAdapter(extensionId);
+      if (!adapter) {
+        logger.warn(
+          `Cannot broadcast status: No RooCode adapter found for extension: ${extensionId || "default"}`,
+        );
+        return;
+      }
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return; // Silently return if not connected
+      }
+
+      const statusMessage: IMessageFromAgent = {
+        messageType: EMessageFromAgent.RooCodeStatus,
+        connectionType: EConnectionSource.Agent,
+        agentId: this.currentAgentId || "unknown-agent",
+        details: {
+          extensionId: adapter.getExtensionId(),
+          isReady: adapter.isReady(),
+          lastHeartbeat: adapter.lastHeartbeat,
+          activeTaskIds: adapter.getActiveTaskIds(),
+          timestamp: Date.now(),
+        },
+      };
+
+      this.ws.send(JSON.stringify(statusMessage));
+    } catch (error) {
+      logger.error("Error broadcasting RooCode status:", error);
+    }
+  }
+
+  /**
+   * Broadcast RooCode configuration update to WebSocket server
+   */
+  public broadcastRooCodeConfiguration(extensionId?: string): void {
+    try {
+      const adapter = this.getRooAdapter(extensionId);
+      if (!adapter) {
+        logger.warn(
+          `Cannot broadcast configuration: No RooCode adapter found for extension: ${extensionId || "default"}`,
+        );
+        return;
+      }
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return; // Silently return if not connected
+      }
+
+      const configMessage: IMessageFromAgent = {
+        messageType: EMessageFromAgent.RooCodeConfiguration,
+        connectionType: EConnectionSource.Agent,
+        agentId: this.currentAgentId || "unknown-agent",
+        details: {
+          extensionId: adapter.getExtensionId(),
+          configuration: adapter.getConfiguration(),
+          timestamp: Date.now(),
+        },
+      };
+
+      this.ws.send(JSON.stringify(configMessage));
+    } catch (error) {
+      logger.error("Error broadcasting RooCode configuration:", error);
+    }
+  }
+
+  /**
+   * Broadcast RooCode profiles to WebSocket server
+   */
+  public broadcastRooCodeProfiles(extensionId?: string): void {
+    try {
+      const adapter = this.getRooAdapter(extensionId);
+      if (!adapter) {
+        logger.warn(
+          `Cannot broadcast profiles: No RooCode adapter found for extension: ${extensionId || "default"}`,
+        );
+        return;
+      }
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return; // Silently return if not connected
+      }
+
+      const profilesMessage: IMessageFromAgent = {
+        messageType: EMessageFromAgent.RooCodeProfiles,
+        connectionType: EConnectionSource.Agent,
+        agentId: this.currentAgentId || "unknown-agent",
+        details: {
+          extensionId: adapter.getExtensionId(),
+          profiles: adapter.getProfiles(),
+          activeProfile: adapter.getActiveProfile(),
+          timestamp: Date.now(),
+        },
+      };
+
+      this.ws.send(JSON.stringify(profilesMessage));
+    } catch (error) {
+      logger.error("Error broadcasting RooCode profiles:", error);
+    }
+  }
+
+  /**
+   * Broadcast RooCode task history to WebSocket server
+   */
+  public broadcastRooCodeTaskHistory(extensionId?: string): void {
+    try {
+      const adapter = this.getRooAdapter(extensionId);
+      if (!adapter) {
+        logger.warn(
+          `Cannot broadcast task history: No RooCode adapter found for extension: ${extensionId || "default"}`,
+        );
+        return;
+      }
+
+      if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+        return; // Silently return if not connected
+      }
+
+      const historyMessage: IMessageFromAgent = {
+        messageType: EMessageFromAgent.RooCodeTaskHistory,
+        connectionType: EConnectionSource.Agent,
+        agentId: this.currentAgentId || "unknown-agent",
+        details: {
+          extensionId: adapter.getExtensionId(),
+          taskHistory: adapter.getTaskHistory(),
+          timestamp: Date.now(),
+        },
+      };
+
+      this.ws.send(JSON.stringify(historyMessage));
+    } catch (error) {
+      logger.error("Error broadcasting RooCode task history:", error);
+    }
   }
 }
 

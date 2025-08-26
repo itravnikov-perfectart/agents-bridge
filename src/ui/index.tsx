@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from "react";
 import ReactDOM from "react-dom/client";
 import {
-  EConnectionType,
+  EConnectionSource,
   EMessageFromServer,
   EMessageFromUI,
   EMessageToServer,
@@ -145,8 +145,8 @@ const App = () => {
 
       // First identify as UI client
       const identifyMessage: IMessageFromUI = {
-        messageType: EMessageToServer.Register,
-        connectionType: EConnectionType.UI,
+        messageType: EMessageFromUI.Register,
+        connectionType: EConnectionSource.UI,
         details: {
           uiClientId,
         },
@@ -190,7 +190,7 @@ const App = () => {
             // Now request the agent list since we're properly registered
             const messageToSend: IMessageFromUI = {
               messageType: EMessageFromUI.GetAgents,
-              connectionType: EConnectionType.UI,
+              connectionType: EConnectionSource.UI,
             };
             console.log("📋 Requesting agent list after registration confirmation...");
             if (websocket) {
@@ -583,7 +583,7 @@ const App = () => {
     // Send message to server
     const messageToSend: IMessageFromUI = {
       messageType: EMessageFromUI.SendToRooCode,
-      connectionType: EConnectionType.UI,
+      connectionType: EConnectionSource.UI,
       details: {
         agentId: selectedAgent,
         message: message,
@@ -612,7 +612,7 @@ const App = () => {
 
     const messageToSend: IMessageFromUI = {
       messageType: EMessageFromUI.CreateTask,
-      connectionType: EConnectionType.UI,
+      connectionType: EConnectionSource.UI,
       details: {
         task,
       },

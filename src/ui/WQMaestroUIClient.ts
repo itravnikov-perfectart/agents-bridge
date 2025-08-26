@@ -1,6 +1,6 @@
 import { logger } from '../utils/browserLogger';
 import { ProcessStatus, ProcessOptions, IMessageFromUI } from '../server/types';
-import { EConnectionType, EMessageFromUI } from '../server/message.enum';
+import { EConnectionSource, EMessageFromUI } from '../server/message.enum';
 
 export class WQMaestroUIClient {
   private ws: WebSocket;
@@ -60,7 +60,7 @@ export class WQMaestroUIClient {
       this.ws.addEventListener('message', handler);
       const messageToSend: IMessageFromUI = {
         messageType: EMessageFromUI.StartProcess,
-        connectionType: EConnectionType.UI,
+        connectionType: EConnectionSource.UI,
         details: {
           requestId,
           options,
@@ -99,7 +99,7 @@ export class WQMaestroUIClient {
       this.ws.addEventListener('message', handler);
       const messageToSend: IMessageFromUI = {
         messageType: EMessageFromUI.StopProcess,
-        connectionType: EConnectionType.UI,
+        connectionType: EConnectionSource.UI,
         details: {
           requestId,
           processId,
@@ -138,7 +138,7 @@ export class WQMaestroUIClient {
       this.ws.addEventListener('message', handler);
       const messageToSend: IMessageFromUI = {
         messageType: EMessageFromUI.GetProcessStatus,
-        connectionType: EConnectionType.UI,
+        connectionType: EConnectionSource.UI,
         details: {
           requestId,
           processId,
@@ -177,7 +177,7 @@ export class WQMaestroUIClient {
       this.ws.addEventListener('message', handler);
       const messageToSend: IMessageFromUI = {
         messageType: EMessageFromUI.ListProcesses,
-        connectionType: EConnectionType.UI,
+        connectionType: EConnectionSource.UI,
         details: {
           requestId,
         },
@@ -215,7 +215,7 @@ export class WQMaestroUIClient {
       this.ws.addEventListener('message', handler);
       const messageToSend: IMessageFromUI = {
         messageType: EMessageFromUI.SendToRooCode,
-        connectionType: EConnectionType.UI,
+        connectionType: EConnectionSource.UI,
         details: {
           requestId,
           message,
