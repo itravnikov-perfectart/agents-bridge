@@ -27,7 +27,7 @@ import {
 } from "../server/message.enum";
 import { RooCodeEventName, TaskEvent } from "@roo-code/types";
 
-import { v4 as uuidv4 } from 'uuid';
+import { v4 as uuidv4 } from "uuid";
 
 /**
  * Core controller to manage Cline, RooCode and WQ Maestro extensions
@@ -63,6 +63,17 @@ export class ExtensionController extends EventEmitter {
     // Check and create adapter for default RooCode extension
     if (this.isExtensionInstalled(config.defaultRooIdentifier)) {
       const defaultAdapter = new RooCodeAdapter(config.defaultRooIdentifier);
+      // Wire immediate forwarding of ANY Roo event arriving to the adapter
+      defaultAdapter.onEvent = (event) => {
+        try {
+          const serialized = JSON.stringify(event);
+          const adapterExtensionId = defaultAdapter.getExtensionId();
+          const isPartial = !!(event as any)?.data?.message?.partial;
+          this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+        } catch (err) {
+          logger.warn("Failed to forward adapter event immediately", err);
+        }
+      };
       this.rooAdapterMap.set(config.defaultRooIdentifier, defaultAdapter);
       logger.info(`Added RooCode adapter for: ${config.defaultRooIdentifier}`);
     } else {
@@ -79,6 +90,16 @@ export class ExtensionController extends EventEmitter {
         this.isExtensionInstalled(identifier)
       ) {
         const adapter = new RooCodeAdapter(identifier);
+        adapter.onEvent = (event) => {
+          try {
+            const serialized = JSON.stringify(event);
+            const adapterExtensionId = adapter.getExtensionId();
+            const isPartial = !!(event as any)?.data?.message?.partial;
+            this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+          } catch (err) {
+            logger.warn("Failed to forward adapter event immediately", err);
+          }
+        };
         this.rooAdapterMap.set(identifier, adapter);
         logger.info(`Added RooCode adapter for: ${identifier}`);
       } else if (identifier !== config.defaultRooIdentifier) {
@@ -119,12 +140,7 @@ export class ExtensionController extends EventEmitter {
     const taskStreams = adapter.executeRooTasks([
       {
         workspacePath: this.workspacePath,
-        taskId: `task-${Date.now()}`,
         text: message,
-        // metadata: {
-        //   source: "vscode-extension",
-        //   controllerId: this.workspacePath,
-        // },
       },
     ]);
 
@@ -135,17 +151,28 @@ export class ExtensionController extends EventEmitter {
           logger.info(`RooCode event for message "${message}":`, event);
 
           if (event.name === RooCodeEventName.Message) {
-            // const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
             if (event.data.message?.text) {
-              // Only send response for final (non-partial) messages to avoid duplication
-              if (!event.data.message.partial) {
-                this.sendRooCodeResponseToServer(event.data.message.text);
-              }
-              
-              // outputChannel.appendLine(
-              //   `[${taskId}] Result: ${messageEvent.data.message.text}`,
-              // );
-              // Removed the executeCommand call that was causing duplication
+              const isPartial = !!event.data.message.partial;
+              const adapterExtensionId = adapter.getExtensionId();
+              this.sendRooCodeEventToServer(
+                event.data.message.text,
+                isPartial,
+                adapterExtensionId,
+              );
+            }
+          } else {
+            // Forward all other RooCode events as serialized JSON for visibility in UI/logs
+            const adapterExtensionId = adapter.getExtensionId();
+            try {
+              const serialized = JSON.stringify({
+                eventName: event.name,
+                taskId,
+                data: event.data,
+              });
+              const isPartial = !!event?.data?.message?.partial;
+              this.sendRooCodeEventToServer(serialized, isPartial, adapterExtensionId);
+            } catch (e) {
+              logger.warn("Failed to serialize RooCode event for broadcast", e);
             }
           }
         }
@@ -635,7 +662,9 @@ export class ExtensionController extends EventEmitter {
         try {
           const messageData = event.data.toString();
           const message = JSON.parse(messageData) as IMessageFromServer;
-          logger.info(`[DEBUG] Agent ${this.currentAgentId} received message from WebSocket server: ${messageData}`);
+          logger.info(
+            `[DEBUG] Agent ${this.currentAgentId} received message from WebSocket server: ${messageData}`,
+          );
 
           switch (message.messageType) {
             case EMessageFromServer.Ping:
@@ -668,7 +697,9 @@ export class ExtensionController extends EventEmitter {
               );
               // Forward the message to RooCode
               if (message.details?.message) {
-                logger.info(`[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.details.message}`);
+                logger.info(
+                  `[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.details.message}`,
+                );
                 await this.sendToRooCode(message.details.message);
               } else {
                 logger.warn(
@@ -710,7 +741,11 @@ export class ExtensionController extends EventEmitter {
   /**
    * Send RooCode response back to WebSocket server for UI chat
    */
-  private sendRooCodeResponseToServer(response: string): void {
+  private sendRooCodeEventToServer(
+    response: string,
+    partial: boolean,
+    extensionId?: string,
+  ): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       logger.warn("WebSocket not connected, cannot send RooCode response");
       return;
@@ -722,11 +757,15 @@ export class ExtensionController extends EventEmitter {
       agentId: this.currentAgentId || "unknown-agent",
       details: {
         response,
+        partial,
+        extensionId,
         timestamp: Date.now(),
       },
     };
 
-    logger.info(`Sending RooCode response to server: ${response}`);
+    logger.info(
+      `Sending RooCode ${partial ? "partial" : "final"} response to server [ext=${extensionId}]: ${response}`,
+    );
     this.ws.send(JSON.stringify(responseMessage));
   }
 }

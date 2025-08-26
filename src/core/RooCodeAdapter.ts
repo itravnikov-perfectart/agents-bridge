@@ -43,6 +43,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private taskSemaphore: Semaphore;
   public lastHeartbeat = 0;
   public containerId?: string;
+  // Optional external subscriber to receive all Roo events immediately
+  public onEvent?: (event: TaskEvent) => void;
 
   constructor(extensionId: string, maxConcurrentTasks = 5) {
     super();
@@ -86,7 +88,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
 
     this.api.on(RooCodeEventName.Message, (data) => {
       logger.info("RooCode Message Event:", JSON.stringify(data, null, 2));
-      this.enqueueEvent(data.taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.Message,
         data: {
           ...data,
@@ -94,27 +96,29 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
             ...data.message,
           },
         },
-      });
+      };
+      this.enqueueEvent(data.taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskCreated, (taskId) => {
       logger.info(`RooCode Task Created: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskCreated,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskStarted, (taskId) => {
       logger.info(`RooCode Task Started: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskStarted,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(
@@ -124,103 +128,96 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
           tokenUsage,
           toolUsage,
         });
-        this.enqueueEvent(taskId, {
+        const event: TaskEvent = {
           name: RooCodeEventName.TaskCompleted,
-          data: {
-            taskId,
-            tokenUsage,
-            toolUsage,
-          },
-        });
+          data: { taskId, tokenUsage, toolUsage },
+        };
+        this.enqueueEvent(taskId, event);
+        this.onEvent?.(event);
       },
     );
 
     this.api.on(RooCodeEventName.TaskAborted, (taskId) => {
       logger.info(`RooCode Task Aborted: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskAborted,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskPaused, (taskId) => {
       logger.info(`RooCode Task Paused: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskPaused,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskUnpaused, (taskId) => {
       logger.info(`RooCode Task Unpaused: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskUnpaused,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskModeSwitched, (taskId, mode) => {
       logger.info(`RooCode Task Mode Switched: ${taskId} -> ${mode}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskModeSwitched,
-        data: {
-          taskId,
-          mode,
-        },
-      });
+        data: { taskId, mode },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskSpawned, (taskId, childTaskId) => {
       logger.info(`RooCode Task Spawned: ${taskId} -> ${childTaskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskSpawned,
-        data: {
-          taskId,
-          childTaskId,
-        },
-      });
+        data: { taskId, childTaskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(RooCodeEventName.TaskAskResponded, (taskId) => {
       logger.info(`RooCode Task Ask Responded: ${taskId}`);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskAskResponded,
-        data: {
-          taskId,
-        },
-      });
+        data: { taskId },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
 
     this.api.on(
       RooCodeEventName.TaskTokenUsageUpdated,
       (taskId, tokenUsage) => {
         logger.info(`RooCode Task Token Usage Updated: ${taskId}`, tokenUsage);
-        this.enqueueEvent(taskId, {
+        const event: TaskEvent = {
           name: RooCodeEventName.TaskTokenUsageUpdated,
-          data: {
-            taskId,
-            tokenUsage,
-          },
-        });
+          data: { taskId, tokenUsage },
+        };
+        this.enqueueEvent(taskId, event);
+        this.onEvent?.(event);
       },
     );
 
     this.api.on(RooCodeEventName.TaskToolFailed, (taskId, tool, error) => {
       logger.error(`RooCode Task Tool Failed: ${taskId} - ${tool}`, error);
-      this.enqueueEvent(taskId, {
+      const event: TaskEvent = {
         name: RooCodeEventName.TaskToolFailed,
-        data: {
-          taskId,
-          tool,
-          error,
-        },
-      });
+        data: { taskId, tool, error },
+      };
+      this.enqueueEvent(taskId, event);
+      this.onEvent?.(event);
     });
   }
 

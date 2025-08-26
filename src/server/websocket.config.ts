@@ -36,7 +36,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
   const agentManager = new AgentManager(pingInterval, 5); // 5x timeout multiplier
   const uiClients = new Set<WebSocket>(); // Track UI clients separately
-  
+
   const healthCheckInterval = setInterval(
     () => agentManager.checkHealth(),
     pingInterval,
@@ -59,8 +59,15 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
         if (connectionType === EConnectionType.UI) {
           // Add UI client to tracking set
           uiClients.add(socket);
-          logger.info(`[DEBUG] UI client connected. Total UI clients: ${uiClients.size}`);
-          handleUIConnection(message as IMessageFromUI, socket, agentManager, uiClients);
+          logger.info(
+            `[DEBUG] UI client connected. Total UI clients: ${uiClients.size}`,
+          );
+          handleUIConnection(
+            message as IMessageFromUI,
+            socket,
+            agentManager,
+            uiClients,
+          );
         } else if (connectionType === EConnectionType.Agent) {
           agentId = (message as IMessageFromAgent).agentId;
 
@@ -83,7 +90,12 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
         case EConnectionType.Agent:
           if (agentId) {
             // Broadcast agent update before removing
-            broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
+            broadcastAgentUpdate(
+              uiClients,
+              agentManager,
+              "disconnected",
+              agentId,
+            );
             agentManager.removeAgent(agentId);
             logger.info(
               `Agent disconnected: ${agentId}, code: ${code}, reason: ${reason}`,
@@ -113,7 +125,12 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
         case EConnectionType.Agent:
           if (agentId) {
             // Broadcast agent update before removing
-            broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
+            broadcastAgentUpdate(
+              uiClients,
+              agentManager,
+              "disconnected",
+              agentId,
+            );
             logger.error(`WebSocket error for agent ${agentId}:`, error);
             agentManager.removeAgent(agentId);
           } else {
@@ -194,11 +211,13 @@ const handleUIConnection = (
         logger.warn(`Agent ${agentId} not found for RooCode message`);
         return;
       }
-      
+
       // Debug: Check how many agents are registered
       const totalAgents = agentManager.agents.size;
-      logger.info(`[DEBUG] Server has ${totalAgents} registered agents. Sending to agent ${agentId}`);
-      
+      logger.info(
+        `[DEBUG] Server has ${totalAgents} registered agents. Sending to agent ${agentId}`,
+      );
+
       const messageToSend: IMessageFromServer = {
         messageType: EMessageFromServer.RooCodeMessage,
         details: {
@@ -206,22 +225,45 @@ const handleUIConnection = (
         },
         timestamp: Date.now(),
       };
-      
-      logger.info(`[DEBUG] Server sending RooCode message to agent ${agentId}: ${JSON.stringify(messageToSend)}`);
+
+      logger.info(
+        `[DEBUG] Server sending RooCode message to agent ${agentId}: ${JSON.stringify(messageToSend)}`,
+      );
       agentToSendMessage.socket.send(JSON.stringify(messageToSend));
       logger.info(
         `Forwarded message to RooCode via agent ${agentId}: ${messageFromUI}`,
       );
       break;
     case EMessageFromUI.CreateTask:
+      try {
+        const task = message.details?.task as any;
+        const targetAgentId = task?.agentId || message.details?.agentId;
+        const agentSocket = targetAgentId
+          ? agentManager.agents.get(targetAgentId)?.socket
+          : undefined;
+        if (!agentSocket) {
+          logger.warn(`Agent ${targetAgentId} not found for CreateTask`);
+          return;
+        }
+
+        const createTaskMsg: IMessageFromServer = {
+          messageType: EMessageFromServer.CreateTask,
+          details: {
+            task,
+          },
+          timestamp: Date.now(),
+        };
+        agentSocket.send(JSON.stringify(createTaskMsg));
+        logger.info(`Forwarded CreateTask to agent ${targetAgentId}: ${task?.id}`);
+      } catch (err) {
+        logger.error("Failed to forward CreateTask to agent", err);
+      }
+      break;
     case EMessageFromUI.StartProcess:
     case EMessageFromUI.StopProcess:
     case EMessageFromUI.GetProcessStatus:
     case EMessageFromUI.ListProcesses:
-      logger.info(
-        `Received message from UI: ${messageType} which is not handled`,
-      );
-
+      logger.info(`Received message from UI: ${messageType} which is not handled`);
       break;
 
     //   const agentIdToCreateTask = message.details?.agentId;
@@ -272,13 +314,13 @@ const handleUIConnection = (
 const broadcastAgentUpdate = (
   uiClients: Set<WebSocket>,
   agentManager: AgentManager,
-  action: 'connected' | 'disconnected',
+  action: "connected" | "disconnected",
   agentId: string,
 ) => {
   const agents = Array.from(agentManager.agents.entries()).map(
     ([id, agent]) => ({
       id,
-      status: action === 'connected' ? "connected" : "disconnected",
+      status: action === "connected" ? "connected" : "disconnected",
       lastHeartbeat: agent.lastHeartbeat,
       connectedAt: agent.connectedAt,
       metadata: agent.metadata,
@@ -316,6 +358,13 @@ const handleAgentConnection = (
   uiClients: Set<WebSocket>,
 ) => {
   const { messageType, agentId } = message;
+  // Debug: log every agent message entering the server
+  try {
+    const preview = JSON.stringify(message.details)?.slice(0, 200);
+    logger.info(
+      `[AGENT->SERVER] agentId=${agentId} type=${messageType} details=${preview}${preview && preview.length === 200 ? '…' : ''}`,
+    );
+  } catch {}
 
   switch (messageType) {
     case EMessageToServer.Register:
@@ -326,21 +375,30 @@ const handleAgentConnection = (
         message.metadata,
       );
       const totalAgentsAfterReg = agentManager.agents.size;
-      logger.info(`[DEBUG] Agent connected: ${registredAgentId}. Total agents: ${totalAgentsAfterReg}`);
-      
+      logger.info(
+        `[DEBUG] Agent connected: ${registredAgentId}. Total agents: ${totalAgentsAfterReg}`,
+      );
+
       // List all current agent IDs for debugging
       const allAgentIds = Array.from(agentManager.agents.keys());
-      logger.info(`[DEBUG] All registered agent IDs: ${allAgentIds.join(', ')}`);
-      
+      logger.info(
+        `[DEBUG] All registered agent IDs: ${allAgentIds.join(", ")}`,
+      );
+
       const messageRegistered: IMessageFromServer = {
         messageType: EMessageFromServer.Registered,
         agentId: registredAgentId,
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageRegistered));
-      
+
       // Broadcast agent update to UI clients
-      broadcastAgentUpdate(uiClients, agentManager, 'connected', registredAgentId);
+      broadcastAgentUpdate(
+        uiClients,
+        agentManager,
+        "connected",
+        registredAgentId,
+      );
       break;
     case EMessageFromAgent.TaskAssigned:
       // For non-register messages, check if agent exists
@@ -378,22 +436,48 @@ const handleAgentConnection = (
       logger.info(`Received pong from agent ${agentId}`);
       break;
     case EMessageFromAgent.RooCodeResponse:
-      // Forward RooCode response to all UI clients
+      logger.info(`[AGENT->SERVER] RooCodeResponse received from ${agentId}`);
+      // Forward RooCode response (partial or final) to all UI clients
       const agentResponse = agentManager.getAgent(agentId);
       if (!agentResponse) {
         logger.warn(`Agent ${agentId} not found for RooCode response`);
         return;
       }
-      
+
+      const isPartial = !!message?.details?.partial;
+      const extensionId = message?.details?.extensionId as string | undefined;
+      // Sanitize overly-technical content so UI does not filter it out
+      const rawResponse = String(message?.details?.response ?? "");
+      const sanitizedResponse = rawResponse
+        // Remove JSON keys that UI filters on
+        .replace(/\"apiProtocol\"\s*:\s*\".*?\"/g, '')
+        .replace(/\"tokensIn\"\s*:\s*\d+/g, '')
+        .replace(/\"tokensOut\"\s*:\s*\d+/g, '')
+        .replace(/\"cacheWrites\"\s*:\s*\d+/g, '')
+        .replace(/\"cacheReads\"\s*:\s*\d+/g, '')
+        .replace(/\"cost\"\s*:\s*\d+(?:\.\d+)?/g, '')
+        // Remove environment_details blocks
+        .replace(/<environment_details>[\s\S]*?<\/environment_details>/g, '')
+        // Remove Current time boilerplate
+        .replace(/Current time in ISO 8601 UTC format:[^\n]*/g, '')
+        // Clean up extra commas and whitespace from JSON-looking strings
+        .replace(/,\s*,/g, ',')
+        .replace(/\{\s*,/g, '{')
+        .replace(/,\s*\}/g, '}')
+        .trim();
+
       const responseMessage: IMessageFromServer = {
-        messageType: EMessageFromServer.RooCodeResponse,
+        messageType: isPartial
+          ? EMessageFromServer.RooCodePartial
+          : EMessageFromServer.RooCodeResponse,
         details: {
           agentId,
-          response: message.details?.response,
+          extensionId,
+          response: sanitizedResponse || rawResponse,
         },
         timestamp: Date.now(),
       };
-      
+
       // Broadcast to UI clients only
       const responseData = JSON.stringify(responseMessage);
       uiClients.forEach((client) => {
@@ -404,7 +488,9 @@ const handleAgentConnection = (
           uiClients.delete(client);
         }
       });
-      logger.info(`Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${message.details?.response}`);
+      logger.info(
+        `Forwarded RooCode ${isPartial ? "partial" : "final"} response from agent ${agentId}${extensionId ? ` (ext ${extensionId})` : ""} to ${uiClients.size} UI clients: ${(message as any).details?.response}`,
+      );
       break;
     case EMessageToServer.Unregister:
       agentManager.removeAgent(agentId);

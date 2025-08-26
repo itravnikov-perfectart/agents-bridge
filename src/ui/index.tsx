@@ -278,10 +278,6 @@ const App = () => {
                 // Check if user content contains agent content (with some tolerance)
                 if (userContent.includes(agentContent) && agentContent.length > 10) return true;
                 
-                // Check for high similarity (e.g., slight modifications)
-                const similarity = calculateSimilarity(userContent, agentContent);
-                if (similarity > 0.8) return true; // 80% similarity threshold
-                
                 return false;
               });
               
@@ -521,23 +517,6 @@ const App = () => {
     } else {
       console.error("WebSocket not connected");
     }
-  };
-
-  // Calculate similarity between two strings (simple implementation)
-  const calculateSimilarity = (str1: string, str2: string): number => {
-    if (str1 === str2) return 1.0;
-    if (str1.length === 0 || str2.length === 0) return 0.0;
-    
-    // Simple word-based similarity
-    const words1 = str1.split(/\s+/).filter(w => w.length > 0);
-    const words2 = str2.split(/\s+/).filter(w => w.length > 0);
-    
-    if (words1.length === 0 || words2.length === 0) return 0.0;
-    
-    const commonWords = words1.filter(word => words2.includes(word));
-    const totalWords = new Set([...words1, ...words2]).size;
-    
-    return commonWords.length / totalWords;
   };
 
   const sendToRooCode = async (agentId: string, message: string) => {

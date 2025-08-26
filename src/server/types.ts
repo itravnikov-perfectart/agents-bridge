@@ -6,7 +6,7 @@ import {
   EMessageFromAgent,
   EMessageFromServer,
   EMessageFromUI,
-  EMessageToServer
+  EMessageToServer,
 } from "./message.enum";
 
 export interface AuthMessage {
@@ -120,9 +120,9 @@ export interface WorkerConfig {
   concurrency?: number;
 }
 
-export interface IMessageToServer {
+export interface IMessageToServer<D = Record<string, any>> {
   metadata?: Record<string, unknown>;
-  details?: Record<string, any>;
+  details?: D;
 }
 
 export interface IMessageFromUI extends IMessageToServer {
@@ -130,7 +130,16 @@ export interface IMessageFromUI extends IMessageToServer {
   connectionType: EConnectionType.UI;
 }
 
-export interface IMessageFromAgent extends IMessageToServer {
+export interface IMessageFromAgent
+  extends IMessageToServer<{
+    taskId?: string;
+    taskType?: string;
+    workspacePath?: string;
+    extensionId?: string;
+    partial?: boolean;
+    response?: string;
+    timestamp?: number;
+  }> {
   messageType: EMessageFromAgent | EMessageToServer;
   connectionType: EConnectionType.Agent;
   agentId: string;
