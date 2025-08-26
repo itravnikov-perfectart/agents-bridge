@@ -1,5 +1,4 @@
 import { RooCodeEventName } from "@roo-code/types";
-import { AdvancedOptions } from "bullmq";
 import { WebSocket } from "ws";
 import {
   EConnectionType,
@@ -103,9 +102,7 @@ export interface AgentConnection {
   metadata?: Record<string, unknown>;
 }
 
-export interface CustomAdvancedOptions extends AdvancedOptions {
-  maxStalledCount?: number;
-}
+// Redis/bullmq removed from extension side
 
 export interface RedisConfig {
   host: string;

@@ -91,7 +91,7 @@
   },
   "devDependencies": {
     "@roo-code/types": "^1.40.0",
-    "@types/dockerode": "^3.3.12",
+
     "@types/express": "^4.17.23",
     "@types/jest": "^29.5.14",
     "@types/lodash": "^4.17.20",
@@ -128,7 +128,7 @@
     "@anthropic-ai/sdk": "^0.57.0",
     "@vitejs/plugin-react": "^4.2.1",
     "bullmq": "^5.5.0",
-    "dockerode": "^4.0.7",
+
     "es-toolkit": "^1.39.10",
     "express": "^4.21.2",
     "pg": "^8.11.3",

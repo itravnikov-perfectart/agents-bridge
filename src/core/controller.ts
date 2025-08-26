@@ -1,5 +1,4 @@
-import { Queue, QueueEvents } from "bullmq";
-import Docker from "dockerode";
+// Docker removed from extension
 import { EventEmitter } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
@@ -8,7 +7,6 @@ import { Commands } from "../commands";
 import {
   IMessageFromAgent,
   IMessageFromServer,
-  RedisConfig,
 } from "../server/types";
 import {
   AgentMaestroConfiguration,
@@ -38,9 +36,7 @@ export class ExtensionController extends EventEmitter {
   private currentConfig: AgentMaestroConfiguration = readConfiguration();
   public isInitialized = false;
   private activeTaskListeners: Map<string, vscode.Disposable> = new Map();
-  private taskQueue?: Queue;
-  private redisConfig: RedisConfig;
-  private docker: Docker;
+  // Docker removed from extension
   private lastAgentIndex = 0;
   private ws?: WebSocket;
   private activeTasks: Map<string, { workspacePath: string; agentId: string }> =
@@ -48,10 +44,9 @@ export class ExtensionController extends EventEmitter {
   private workspacePath: string;
   private currentAgentId?: string;
 
-  constructor(redisConfig: RedisConfig, workspacePath?: string) {
+  constructor(workspacePath?: string) {
     super();
-    this.redisConfig = redisConfig;
-    this.docker = new Docker();
+    // Docker initialization removed
     this.workspacePath = workspacePath || "";
     this.initializeRooAdapters(this.currentConfig);
   }
@@ -253,27 +248,6 @@ export class ExtensionController extends EventEmitter {
         );
       }
 
-      // Initialize task queue and events (with Redis fallback)
-      try {
-        this.taskQueue = new Queue("agent-tasks", {
-          connection: this.redisConfig,
-          defaultJobOptions: {
-            attempts: 3,
-            backoff: {
-              type: "exponential",
-              delay: 1000,
-            },
-          },
-        });
-        logger.info("Task queue initialized with Redis");
-      } catch (error) {
-        logger.warn(
-          "Redis connection failed, task queue will be disabled:",
-          error,
-        );
-        // Task queue will remain undefined, and we'll handle this in other methods
-      }
-
       this.isInitialized = true;
       logger.info("Extension controller initialized successfully");
     } catch (err) {
@@ -281,49 +255,7 @@ export class ExtensionController extends EventEmitter {
     }
   }
 
-  /**
-   * Create a new container
-   */
-  async createContainer(
-    image: string,
-    options: Docker.ContainerCreateOptions,
-  ): Promise<string> {
-    const container = await this.docker.createContainer({
-      Image: image,
-      ...options,
-    });
-    return container.id;
-  }
-
-  /**
-   * Start a container
-   */
-  async startContainer(containerId: string): Promise<void> {
-    const container = this.docker.getContainer(containerId);
-    await container.start();
-  }
-
-  /**
-   * Stop a container
-   */
-  async stopContainer(containerId: string): Promise<void> {
-    const container = this.docker.getContainer(containerId);
-    await container.stop();
-  }
-
-  /**
-   * Get container status
-   */
-  async getContainerStatus(containerId: string): Promise<any> {
-    const container = this.docker.getContainer(containerId);
-    const info = await container.inspect();
-    return {
-      id: info.Id,
-      status: info.State.Status,
-      running: info.State.Running,
-      exitCode: info.State.ExitCode,
-    };
-  }
+  // Docker container methods removed from extension
 
   /**
    * Setup message handlers for RooCode adapter
@@ -455,101 +387,13 @@ export class ExtensionController extends EventEmitter {
   /**
    * Submit a task to the queue
    */
-  async distributeTask(task: {
-    type: string;
-    data: any;
-    priority?: number;
-    targetAgentId?: string;
-    workspacePath?: string; // Path to workspace directory
-  }): Promise<{ taskId: string; agentId: string }> {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-    const workspacePath = task.workspacePath || this.workspacePath;
-
-    // Use controller's workspace path if not specified
-    task.workspacePath = workspacePath;
-    if (!this.taskQueue) {
-      throw new Error("Task queue not initialized");
-    }
-
-    // Select agent if not specified
-    const agentId = task.targetAgentId || this.selectBestAgent();
-    const job = await this.taskQueue.add(
-      task.type,
-      {
-        ...task.data,
-        agentId,
-        workspacePath: task.workspacePath || "", // Include workspace path in job data
-      },
-      {
-        priority: task.priority || 1,
-      },
-    );
-
-    if (!job.id) {
-      throw new Error("Failed to create task: missing job ID");
-    }
-
-    // Broadcast task assignment via WebSocket
-    if (this.ws) {
-      const message: IMessageFromAgent = {
-        messageType: EMessageFromAgent.TaskAssigned,
-        connectionType: EConnectionType.Agent,
-        agentId,
-        details: {
-          taskId: job.id,
-          taskType: task.type,
-          workspacePath: task.workspacePath || "", // Pass workspace path
-          timestamp: Date.now(),
-        },
-      };
-
-      this.ws.send(JSON.stringify(message));
-    }
-
-    // Track active task
-    this.activeTasks.set(taskId, {
-      workspacePath,
-      agentId,
-    });
-
-    // Create queue events listener
-    const queueEvents = new QueueEvents("agent-tasks", {
-      connection: this.redisConfig,
-    });
-
-    // Listen for task completion with proper typing
-    queueEvents.on("completed", ({ jobId }: { jobId: string }) => {
-      if (jobId === taskId) {
-        this.activeTasks.delete(taskId);
-      }
-    });
-
-    return {
-      taskId: job.id,
-      agentId,
-    };
-  }
+  // distributeTask removed (Redis queue no longer used in extension)
 
   /**
    * Get task status
    */
-  async getTaskStatus(taskId: string): Promise<any> {
-    if (!this.taskQueue) {
-      throw new Error("Task queue not initialized");
-    }
-
-    const job = await this.taskQueue.getJob(taskId);
-    if (!job) {
-      throw new Error("Task not found");
-    }
-
-    return {
-      id: job.id,
-      status: await job.getState(),
-      progress: job.progress,
-      result: job.returnvalue,
-      failedReason: job.failedReason,
-    };
+  async getTaskStatus(_taskId: string): Promise<any> {
+    throw new Error("Task queue is not available in the extension build");
   }
 
   private selectBestAgent(): string {
@@ -567,18 +411,14 @@ export class ExtensionController extends EventEmitter {
   }
 
   async dispose(): Promise<void> {
-    // Cleanup task queue
-    if (this.taskQueue) {
-      await this.taskQueue.close();
-    }
+    // No task queue in extension
 
     // Cleanup WebSocket server
     if (this.ws) {
       this.ws.close();
     }
 
-    // Cleanup Docker resources
-    // (Dockerode doesn't require explicit cleanup)
+    // No Docker resources to cleanup in extension
 
     this.removeAllListeners();
     this.isInitialized = false;
@@ -784,7 +624,6 @@ export class ControllerManager {
    */
   createController(
     id: string,
-    redisConfig: RedisConfig,
     workspacePath: string,
   ): ExtensionController {
     if (this.controllers.has(id)) {
@@ -792,7 +631,7 @@ export class ControllerManager {
       this.controllers.get(id)?.dispose();
     }
 
-    const controller = new ExtensionController(redisConfig, workspacePath);
+    const controller = new ExtensionController(workspacePath);
     this.controllers.set(id, controller);
     this.activeControllerId = id;
 

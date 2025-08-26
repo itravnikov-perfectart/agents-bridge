@@ -78,24 +78,17 @@ export async function activate(context: vscode.ExtensionContext) {
   vscode.window.showInformationMessage("Agent Maestro extension activated!");
   logger.info("Extension activated successfully agent maestro");
 
-  // Initialize the extension controller with Redis config
-  const redisConfig = {
-    host: process.env.REDIS_HOST || "localhost",
-    port: parseInt(process.env.REDIS_PORT || "6379"),
-  };
-
   // Initialize with either VSCode workspace or empty path
   const initialWorkspacePath =
     vscode.workspace.workspaceFolders?.[0]?.uri?.path || "";
   const defaultController = controllerManager.createController(
     "default",
-    redisConfig,
     initialWorkspacePath,
   );
 
   logger.debug(
     "agent maestro: controllerManager",
-    defaultController,
+    JSON.stringify(defaultController, null, 2),
     ":initialWorkspacePath:",
     initialWorkspacePath,
   );
@@ -113,205 +106,122 @@ export async function activate(context: vscode.ExtensionContext) {
   try {
     // Register commands
     const disposables = [
-      // vscode.commands.registerCommand(Commands.CreateController, async () => {
-      //   try {
-      //     const id = await vscode.window.showInputBox({
-      //       prompt: "Enter controller ID",
-      //       placeHolder: "controller-id",
-      //     });
-      //     if (!id) {
-      //       return;
-      //     }
-
-      //     const path = await vscode.window.showInputBox({
-      //       prompt: "Enter workspace path",
-      //       placeHolder: "/path/to/workspace",
-      //     });
-      //     if (!path) {
-      //       return;
-      //     }
-      //     const controller = controllerManager.createController(
-      //       id,
-      //       redisConfig,
-      //       path,
-      //     );
-      //     await controller.initialize();
-      //     vscode.window.showInformationMessage(
-      //       `Created controller ${id} for workspace ${path}`,
-      //     );
-      //   } catch (error) {
-      //     logger.error("Error creating controller:", error);
-      //     vscode.window.showErrorMessage(
-      //       `Failed to create controller: ${(error as Error).message}`,
-      //     );
-      //   }
-      // }),
-
-      // vscode.commands.registerCommand(Commands.SwitchController, async () => {
-      //   try {
-      //     const controllers = controllerManager.getControllerIds();
-      //     if (controllers.length === 0) {
-      //       throw new Error("No controllers available");
-      //     }
-
-      //     const selected = await vscode.window.showQuickPick(controllers, {
-      //       placeHolder: "Select controller to activate",
-      //     });
-      //     if (selected && controllerManager.setActiveController(selected)) {
-      //       context.globalState.update("lastActiveController", selected);
-      //       vscode.window.showInformationMessage(
-      //         `Active controller set to: ${selected}`,
-      //       );
-      //     }
-      //   } catch (error) {
-      //     logger.error("Error switching controllers:", error);
-      //     vscode.window.showErrorMessage(
-      //       `Failed to switch controller: ${(error as Error).message}`,
-      //     );
-      //   }
-      // }),
-
-      // vscode.commands.registerCommand(Commands.SetWorkspacePath, async () => {
-      //   try {
-      //     const controller = controllerManager.getActiveController();
-      //     if (!controller) {
-      //       throw new Error("No active controller");
-      //     }
-
-      //     const path = await vscode.window.showInputBox({
-      //       prompt: "Enter workspace path manually",
-      //       placeHolder: "/path/to/workspace",
-      //     });
-      //     if (path) {
-      //       controller.setWorkspacePath(path);
-      //       vscode.window.showInformationMessage(
-      //         `Workspace path set to: ${path}`,
-      //       );
-      //     }
-      //   } catch (error) {
-      //     logger.error("Error setting workspace path:", error);
-      //     vscode.window.showErrorMessage(
-      //       `Failed to set workspace path: ${(error as Error).message}`,
-      //     );
-      //   }
-      // }),
-
-      // vscode.commands.registerCommand(Commands.GetStatus, () => {
-      //   try {
-      //     const activeController = controllerManager.getActiveController();
-      //     if (!activeController) {
-      //       throw new Error("No active controller");
-      //     }
-      //     const systemInfo = getSystemInfo(activeController);
-      //     vscode.window.showInformationMessage(
-      //       JSON.stringify(systemInfo, null, 2),
-      //     );
-      //   } catch (error) {
-      //     logger.error("Error retrieving system information:", error);
-      //     vscode.window.showErrorMessage(
-      //       `Failed to get system status: ${(error as Error).message}`,
-      //     );
-      //   }
-      // }),
+      vscode.commands.registerCommand(Commands.GetStatus, () => {
+        try {
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const systemInfo = getSystemInfo(activeController);
+          vscode.window.showInformationMessage(
+            JSON.stringify(systemInfo, null, 2),
+          );
+        } catch (error) {
+          logger.error("Error retrieving system information:", error);
+          vscode.window.showErrorMessage(
+            `Failed to get system status: ${(error as Error).message}`,
+          );
+        }
+      }),
 
       vscode.commands.registerCommand(Commands.SendToRoo, async () => {
-        //   try {
-        const activeController = controllerManager.getActiveController();
-        if (!activeController) {
-          throw new Error("No active controller");
-        }
-        const adapter = activeController.getRooAdapter();
-        if (!adapter) {
-          throw new Error("No active RooCode adapter found");
-        }
+        try {
+          const activeController = controllerManager.getActiveController();
+          if (!activeController) {
+            throw new Error("No active controller");
+          }
+          const adapter = activeController.getRooAdapter();
+          if (!adapter) {
+            throw new Error("No active RooCode adapter found");
+          }
 
-        // Запрашиваем количество задач
-        const taskCountStr = await vscode.window.showInputBox({
-          prompt: "How many tasks do you want to send?",
-          placeHolder: "1",
-        });
-        if (!taskCountStr) {
-          return;
-        }
-
-        const taskCount = parseInt(taskCountStr);
-        if (isNaN(taskCount) || taskCount < 1) {
-          throw new Error("Invalid number of tasks");
-        }
-
-        // Собираем сообщения для каждой задачи
-        const messages: string[] = [];
-        for (let i = 0; i < taskCount; i++) {
-          const message = await vscode.window.showInputBox({
-            prompt: `Enter message for task ${i + 1}`,
-            placeHolder: "Your message...",
+          // Запрашиваем количество задач
+          const taskCountStr = await vscode.window.showInputBox({
+            prompt: "How many tasks do you want to send?",
+            placeHolder: "1",
           });
-          if (!message) {
+          if (!taskCountStr) {
             return;
-          } // Отмена ввода
-          messages.push(message);
+          }
+
+          const taskCount = parseInt(taskCountStr);
+          if (isNaN(taskCount) || taskCount < 1) {
+            throw new Error("Invalid number of tasks");
+          }
+
+          // Собираем сообщения для каждой задачи
+          const messages: string[] = [];
+          for (let i = 0; i < taskCount; i++) {
+            const message = await vscode.window.showInputBox({
+              prompt: `Enter message for task ${i + 1}`,
+              placeHolder: "Your message...",
+            });
+            if (!message) {
+              return;
+            } // Отмена ввода
+            messages.push(message);
+          }
+
+          const workspacePath = activeController.getWorkspacePath();
+          const taskIds = messages.map(
+            (_, i) =>
+              `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, "-")}`,
+          );
+
+          // Create output channel for all tasks
+          const outputChannel = vscode.window.createOutputChannel(
+            `RooCode Tasks ${taskIds[0]}...`,
+          );
+          outputChannel.show();
+          outputChannel.appendLine(
+            `Starting ${taskCount} tasks in workspace: ${workspacePath}`,
+          );
+
+          // Run all tasks in parallel
+          const taskOptions = messages.map((message, i) => ({
+            workspacePath,
+            taskId: taskIds[i],
+            text: message,
+            metadata: {
+              source: "vscode-extension",
+              controllerId: activeController.getWorkspacePath(),
+            },
+          }));
+
+          const taskStreams = adapter.executeRooTasks(taskOptions);
+
+          // Process results of all tasks
+          for await (const taskEvents of taskStreams) {
+            const taskId = taskEvents[0]?.data?.taskId || "unknown-task";
+            try {
+              for (const event of taskEvents) {
+                outputChannel.appendLine(
+                  `[${taskId}] [${event.name}] ${JSON.stringify(event.data)}`,
+                );
+                if (event.name === RooCodeEventName.Message) {
+                  const messageEvent =
+                    event as TaskEvent<RooCodeEventName.Message>;
+                  if (messageEvent.data.message?.text) {
+                    outputChannel.appendLine(
+                      `[${taskId}] Result: ${messageEvent.data.message.text}`,
+                    );
+                    await vscode.commands.executeCommand(
+                      Commands.ExecuteRooResult,
+                      messageEvent.data.message.text,
+                    );
+                  }
+                }
+              }
+            } catch (error) {
+              outputChannel.appendLine(`[${taskId}] Error: ${error}`);
+            }
+          }
+        } catch (error) {
+          logger.error("Error sending message to RooCode:", error);
+          vscode.window.showErrorMessage(
+            `Failed to send message to RooCode: ${(error as Error).message}`,
+          );
         }
-
-        const workspacePath = activeController.getWorkspacePath();
-        const taskIds = messages.map(
-          (_, i) =>
-            `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, "-")}`,
-        );
-
-        // Create output channel for all tasks
-        const outputChannel = vscode.window.createOutputChannel(
-          `RooCode Tasks ${taskIds[0]}...`,
-        );
-        outputChannel.show();
-        outputChannel.appendLine(
-          `Starting ${taskCount} tasks in workspace: ${workspacePath}`,
-        );
-
-        // Run all tasks in parallel
-        const taskOptions = messages.map((message, i) => ({
-          workspacePath,
-          taskId: taskIds[i],
-          text: message,
-          metadata: {
-            source: "vscode-extension",
-            controllerId: activeController.getWorkspacePath(),
-          },
-        }));
-
-        const taskStreams = adapter.executeRooTasks(taskOptions);
-
-        //     // Process results of all tasks
-        //     for await (const taskEvents of taskStreams) {
-        //       const taskId = taskEvents[0]?.data?.taskId || "unknown-task";
-        //       try {
-        //         for (const event of taskEvents) {
-        //           outputChannel.appendLine(
-        //             `[${taskId}] [${event.name}] ${JSON.stringify(event.data)}`,
-        //           );
-        //           if (event.name === RooCodeEventName.Message) {
-        //             const messageEvent =
-        //               event as TaskEvent<RooCodeEventName.Message>;
-        //             if (messageEvent.data.message?.text) {
-        //               outputChannel.appendLine(
-        //                 `[${taskId}] Result: ${messageEvent.data.message.text}`,
-        //               );
-        //               await vscode.commands.executeCommand(
-        //                 Commands.ExecuteRooResult,
-        //                 messageEvent.data.message.text,
-        //               );
-        //             }
-        //           }
-        //         }
-        //       } catch (error) {
-        //         outputChannel.appendLine(`[${taskId}] Error: ${error}`);
-        //       }
-        //     }
-        //   } catch (error) {
-        //     logger.error("Error sending message to RooCode:", error);
-        //     vscode.window.showErrorMessage(
-        //       `Failed to send message to RooCode: ${(error as Error).message}`,
-        //     );
-        //   }
       }),
 
       vscode.commands.registerCommand(
@@ -386,10 +296,6 @@ export async function activate(context: vscode.ExtensionContext) {
           }
         },
       ),
-
-      // vscode.commands.registerCommand(Commands.RefreshControllers, () => {
-      //   treeProvider.refresh();
-      // }),
 
       vscode.commands.registerCommand(Commands.ConnectToWSServer, async () => {
         try {
