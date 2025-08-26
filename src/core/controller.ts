@@ -179,25 +179,25 @@ export class ExtensionController extends EventEmitter {
       }
     }
 
-    // if (!adapter.isActive) {
-    //   logger.error(`RooCode adapter is not active for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`);
-    //   return;
-    // }
+    if (!adapter.isActive) {
+      logger.error(`RooCode adapter is not active for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`);
+      return;
+    }
 
-    // try {
-    //   logger.info(`Opening RooCode with message (${extensionId || this.currentConfig.defaultRooIdentifier}): ${message}`);
+    try {
+      logger.info(`Opening RooCode with message (${extensionId || this.currentConfig.defaultRooIdentifier}): ${message}`);
 
-    //   // The sendMessage method opens RooCode with the text and returns an async generator
-    //   // We'll consume the generator to handle any events but don't need to wait for completion
-    //   const messageGenerator = adapter.sendMessage(message);
+      // The sendMessage method opens RooCode with the text and returns an async generator
+      // We'll consume the generator to handle any events but don't need to wait for completion
+      const messageGenerator = adapter.sendMessage(message);
 
-    //   // Start consuming events in the background
-    //   this.consumeRooCodeEvents(messageGenerator, message);
+      // Start consuming events in the background
+      this.consumeRooCodeEvents(messageGenerator, message);
 
-    //   logger.info("RooCode opened with message successfully");
-    // } catch (error) {
-    //   logger.error("Failed to open RooCode with message:", error);
-    // }
+      logger.info("RooCode opened with message successfully");
+    } catch (error) {
+      logger.error("Failed to open RooCode with message:", error);
+    }
   }
 
   /**
@@ -382,33 +382,12 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
-   * Cleanup resources
-   */
-  /**
-   * Submit a task to the queue
-   */
-  // distributeTask removed (Redis queue no longer used in extension)
-
-  /**
    * Get task status
    */
   async getTaskStatus(_taskId: string): Promise<any> {
     throw new Error("Task queue is not available in the extension build");
   }
 
-  private selectBestAgent(): string {
-    // Simple round-robin selection from active agents
-    const activeAgents = Array.from(this.rooAdapterMap.values())
-      .filter((adapter) => adapter.isActive)
-      .map((adapter) => adapter.getExtensionId());
-
-    if (activeAgents.length === 0) {
-      throw new Error("No active agents available");
-    }
-
-    this.lastAgentIndex = (this.lastAgentIndex + 1) % activeAgents.length;
-    return activeAgents[this.lastAgentIndex];
-  }
 
   async dispose(): Promise<void> {
     // No task queue in extension
@@ -576,6 +555,10 @@ export class ExtensionController extends EventEmitter {
     } catch (error) {
       logger.error(`Error connecting to WebSocket server:`, error);
     }
+  }
+
+  getWsPort(): number {
+    return this.currentConfig.wsPort;
   }
 
   /**

@@ -26,11 +26,117 @@
   "contributes": {
     "commands": [
       {
+        "command": "agent-maestro.getStatus",
+        "title": "Agent Maestro: Get Status",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.sendToRoo",
+        "title": "Agent Maestro: Send to RooCode",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.executeRooResult",
+        "title": "Agent Maestro: Execute RooCode Result",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.saveRooCodeSettings",
+        "title": "Agent Maestro: Save RooCode Settings",
+        "category": "Agent Maestro"
+      },
+      {
         "command": "agent-maestro.connectToWSServer",
         "title": "Agent Maestro: Connect to WebSocket Server",
         "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.refreshStatus",
+        "title": "Agent Maestro: Refresh Status",
+        "category": "Agent Maestro"
+      },
+      {
+        "command": "agent-maestro.showOutput",
+        "title": "Agent Maestro: Show Output",
+        "category": "Agent Maestro"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "agent-maestro",
+          "title": "Agent Maestro",
+          "icon": "$(server)"
+        }
+      ]
+    },
+    "views": {
+      "agent-maestro": [
+        {
+          "id": "agent-maestro.status",
+          "name": "Status",
+          "when": "true"
+        }
+      ]
+    },
+    "menus": {
+      "commandPalette": [
+        {
+          "command": "agent-maestro.getStatus",
+          "when": "true"
+        },
+        {
+          "command": "agent-maestro.sendToRoo",
+          "when": "editorTextFocus"
+        },
+        {
+          "command": "agent-maestro.executeRooResult",
+          "when": "true"
+        },
+        {
+          "command": "agent-maestro.saveRooCodeSettings",
+          "when": "true"
+        },
+        {
+          "command": "agent-maestro.connectToWSServer",
+          "when": "true"
+        },
+        {
+          "command": "agent-maestro.refreshStatus",
+          "when": "true"
+        },
+        {
+          "command": "agent-maestro.showOutput",
+          "when": "true"
+        }
+      ],
+      "editor/context": [
+        {
+          "command": "agent-maestro.sendToRoo",
+          "when": "editorTextFocus",
+          "group": "agent-maestro"
+        }
+      ],
+      "view/title": [
+        {
+          "command": "agent-maestro.getStatus",
+          "when": "view == agent-maestro.status",
+          "group": "navigation"
+        },
+        {
+          "command": "agent-maestro.connectToWSServer",
+          "when": "view == agent-maestro.status",
+          "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "agent-maestro.sendToRoo",
+          "when": "view == agent-maestro.status",
+          "group": "inline"
+        }
+      ]
+    },
     "configuration": {
       "title": "Agent Maestro",
       "properties": {

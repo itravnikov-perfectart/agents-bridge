@@ -236,10 +236,18 @@ export async function activate(context: vscode.ExtensionContext) {
           if (!controller) {
             throw new Error("Controller not initialized");
           }
+          const adapter = controller.getRooAdapter();
+          if (!adapter) {
+            throw new Error("No active RooCode adapter found");
+          }
+
+          // Получить текущие настройки
+          const wsPort = controller.getWsPort();
+          logger.info("Current config:", JSON.stringify(wsPort, null, 2));
           const port = await vscode.window.showInputBox({
             prompt: "Enter WebSocket server port",
-            placeHolder: "8080",
-            value: "8080",
+            placeHolder: wsPort.toString(),
+            value: wsPort.toString(),
           });
           if (!port) {
             throw new Error("No port provided");
