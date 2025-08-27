@@ -1,76 +1,26 @@
 import { RooCodeEventName } from "@roo-code/types";
 import * as vscode from "vscode";
-import { TaskEvent } from "./server/types";
+import { TaskEvent } from "./core/types";
 import { logger } from "./utils/logger";
-import { getSystemInfo } from "./utils/systemInfo";
 
 import { Commands } from "./commands";
-import { ControllerManager } from "./core/controller";
+import { ExtensionController } from "./core/controller";
 
-let controllerManager = new ControllerManager();
-
-class ControllerTreeItem extends vscode.TreeItem {
-  constructor(
-    public readonly controllerId: string,
-    public readonly collapsibleState: vscode.TreeItemCollapsibleState,
-  ) {
-    super(controllerId, collapsibleState);
-    this.tooltip = controllerId;
-    this.contextValue = "controller";
-  }
-}
-
-class ControllerTreeProvider
-  implements vscode.TreeDataProvider<ControllerTreeItem>
-{
-  private _onDidChangeTreeData = new vscode.EventEmitter<
-    ControllerTreeItem | undefined
-  >();
-  readonly onDidChangeTreeData = this._onDidChangeTreeData.event;
-
-  refresh(): void {
-    this._onDidChangeTreeData.fire(undefined);
-  }
-
-  getTreeItem(element: ControllerTreeItem): vscode.TreeItem {
-    return element;
-  }
-
-  getChildren(element?: ControllerTreeItem): Thenable<ControllerTreeItem[]> {
-    if (element) {
-      return Promise.resolve([]);
-    }
-    const controllers = controllerManager.getControllerIds();
-    return Promise.resolve(
-      controllers.map(
-        (id) =>
-          new ControllerTreeItem(id, vscode.TreeItemCollapsibleState.None),
-      ),
-    );
-  }
-}
+let controller: ExtensionController | undefined;
 
 export async function activate(context: vscode.ExtensionContext) {
   // Debug activation flow
   logger.debug("Extension activation started agent maestro");
 
-  // Register tree view
-  const treeProvider = new ControllerTreeProvider();
-  context.subscriptions.push(
-    vscode.window.registerTreeDataProvider(
-      "agentMaestroControllers",
-      treeProvider,
-    ),
-  );
 
   // Register activity bar icon
   const statusBarItem = vscode.window.createStatusBarItem(
     vscode.StatusBarAlignment.Right,
     100,
   );
-  statusBarItem.text = "$(server) Agent Maestro";
-  statusBarItem.tooltip = "Manage Agent Maestro Controllers";
-  statusBarItem.command = "agent-maestro.showControllers";
+  statusBarItem.text = "$(server) Agent Bridge";
+  statusBarItem.tooltip = "Manage Agent Bridge Controllers";
+  statusBarItem.command = "agent-bridge.showControllers";
   statusBarItem.show();
   context.subscriptions.push(statusBarItem);
 
@@ -78,31 +28,22 @@ export async function activate(context: vscode.ExtensionContext) {
   vscode.window.showInformationMessage("Agent Maestro extension activated!");
   logger.info("Extension activated successfully agent maestro");
 
-  // Initialize the extension controller with Redis config
-  const redisConfig = {
-    host: process.env.REDIS_HOST || "localhost",
-    port: parseInt(process.env.REDIS_PORT || "6379"),
-  };
-
   // Initialize with either VSCode workspace or empty path
   const initialWorkspacePath =
     vscode.workspace.workspaceFolders?.[0]?.uri?.path || "";
-  const defaultController = controllerManager.createController(
-    "default",
-    redisConfig,
-    initialWorkspacePath,
-  );
+  controller = new ExtensionController(initialWorkspacePath);
+
 
   logger.debug(
-    "agent maestro: controllerManager",
-    defaultController,
+    "agent bridge: controller",
+    controller,
     ":initialWorkspacePath:",
     initialWorkspacePath,
   );
 
   // Initialize the extension controller
   try {
-    await defaultController.initialize();
+    await controller.initialize();
   } catch (error) {
     logger.error("Failed to initialize extension controller:", error);
     vscode.window.showErrorMessage(
@@ -216,11 +157,10 @@ export async function activate(context: vscode.ExtensionContext) {
 
       vscode.commands.registerCommand(Commands.SendToRoo, async () => {
       //   try {
-          const activeController = controllerManager.getActiveController();
-          if (!activeController) {
+          if (!controller) {
             throw new Error("No active controller");
           }
-          const adapter = activeController.getRooAdapter();
+          const adapter = controller.getRooAdapter();
           if (!adapter) {
             throw new Error("No active RooCode adapter found");
           }
@@ -252,7 +192,7 @@ export async function activate(context: vscode.ExtensionContext) {
             messages.push(message);
           }
 
-          const workspacePath = activeController.getWorkspacePath();
+          const workspacePath = controller.getWorkspacePath();
           const taskIds = messages.map(
             (_, i) =>
               `task-${Date.now()}-${i}-${workspacePath.replace(/\W/g, "-")}`,
@@ -274,7 +214,7 @@ export async function activate(context: vscode.ExtensionContext) {
             text: message,
             metadata: {
               source: "vscode-extension",
-              controllerId: activeController.getWorkspacePath(),
+              controllerId: controller?.getWorkspacePath(),
             },
           }));
 
@@ -317,11 +257,10 @@ export async function activate(context: vscode.ExtensionContext) {
       vscode.commands.registerCommand(Commands.ExecuteRooResult,
         async (result: string) => {
           try {
-            const activeController = controllerManager.getActiveController();
-            if (!activeController) {
+            if (!controller) {
               throw new Error("No active controller");
             }
-            const adapter = activeController.getRooAdapter();
+            const adapter = controller.getRooAdapter();
             if (!adapter) {
               throw new Error("No active RooCode adapter found");
             }
@@ -550,8 +489,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
       vscode.commands.registerCommand(Commands.ConnectToWSServer, async () => {
         try {
-          const activeController = controllerManager.getActiveController();
-          if (!activeController) {
+          if (!controller) {
             throw new Error("No active controller");
           }
           const port = await vscode.window.showInputBox({
@@ -562,7 +500,7 @@ export async function activate(context: vscode.ExtensionContext) {
           if (!port) {
             throw new Error("No port provided");
           }
-          activeController.connectToWSServer(parseInt(port));
+          controller.connectToWSServer(parseInt(port));
         } catch (error) {
           logger.error("Error connecting to WebSocket server:", error);
           vscode.window.showErrorMessage(
@@ -574,7 +512,7 @@ export async function activate(context: vscode.ExtensionContext) {
 
     context.subscriptions.push(...disposables);
 
-    return controllerManager.getActiveController();
+    return controller;
   } catch (error) {
     logger.error("Error during extension activation:", error);
     vscode.window.showErrorMessage(
@@ -587,7 +525,7 @@ export async function activate(context: vscode.ExtensionContext) {
 // This method is called when your extension is deactivated
 export async function deactivate() {
   try {
-    await controllerManager.dispose();
+    controller?.dispose(); 
     logger.info("All controllers disposed");
   } catch (error) {
     logger.error("Error during deactivation:", error);

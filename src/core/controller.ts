@@ -1,18 +1,11 @@
-import { Queue, QueueEvents } from "bullmq";
-import Docker from "dockerode";
 import { EventEmitter } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
 // Note: Using global WebSocket API available in VS Code extension host
 import { Commands } from "../commands";
+
 import {
-  IMessageFromAgent,
-  IMessageFromServer,
-  RedisConfig,
-} from "../server/types";
-import {
-  AgentMaestroConfiguration,
-  DEFAULT_CONFIG,
+  AgentConfiguration,
   readConfiguration,
 } from "../utils/config";
 import { logger } from "../utils/logger";
@@ -20,12 +13,14 @@ import { ExtensionStatus } from "../utils/systemInfo";
 import { RooCodeAdapter } from "./RooCodeAdapter";
 import { AgentStatus } from "./types";
 import {
-  EConnectionType,
+  ConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
-  EMessageToServer,
-} from "../server/message.enum";
-import { RooCodeEventName, TaskEvent } from "@roo-code/types";
+  EMessageFromUI,
+  ESystemMessage,
+  Message,
+} from "./types";
+import { TaskEvent as RooCodeTaskEvent } from "./types";
 
 import { v4 as uuidv4 } from 'uuid';
 
@@ -34,56 +29,30 @@ import { v4 as uuidv4 } from 'uuid';
  * Provides unified API access and can be used by both VSCode extension and local server
  */
 export class ExtensionController extends EventEmitter {
-  public readonly rooAdapterMap: Map<string, RooCodeAdapter> = new Map();
-  private currentConfig: AgentMaestroConfiguration = readConfiguration();
+  public rooAdapter: RooCodeAdapter | undefined;
+  private currentConfig: AgentConfiguration = readConfiguration();
   public isInitialized = false;
-  private activeTaskListeners: Map<string, vscode.Disposable> = new Map();
-  private taskQueue?: Queue;
-  private redisConfig: RedisConfig;
-  private docker: Docker;
-  private lastAgentIndex = 0;
+  private activeTaskListener: vscode.Disposable | undefined;
   private ws?: WebSocket;
-  private activeTasks: Map<string, { workspacePath: string; agentId: string }> =
-    new Map();
   private workspacePath: string;
   private currentAgentId?: string;
 
-  constructor(redisConfig: RedisConfig, workspacePath?: string) {
+  constructor(workspacePath?: string) {
     super();
-    this.redisConfig = redisConfig;
-    this.docker = new Docker();
     this.workspacePath = workspacePath || "";
-    this.initializeRooAdapters(this.currentConfig);
+    this.initializeRooAdapter(this.currentConfig);
   }
 
   /**
    * Initialize RooCode adapters for default and variant identifiers
    */
-  private initializeRooAdapters(config: AgentMaestroConfiguration): void {
+  private initializeRooAdapter(config: AgentConfiguration): void {
     // Check and create adapter for default RooCode extension
     if (this.isExtensionInstalled(config.defaultRooIdentifier)) {
-      const defaultAdapter = new RooCodeAdapter(config.defaultRooIdentifier);
-      this.rooAdapterMap.set(config.defaultRooIdentifier, defaultAdapter);
+      this.rooAdapter = new RooCodeAdapter(config.defaultRooIdentifier);
       logger.info(`Added RooCode adapter for: ${config.defaultRooIdentifier}`);
     } else {
       logger.warn(`Extension not found: ${config.defaultRooIdentifier}`);
-    }
-
-    // Check and create adapters for each variant identifier
-    for (const identifier of new Set([
-      ...config.rooVariantIdentifiers,
-      DEFAULT_CONFIG.defaultRooIdentifier,
-    ])) {
-      if (
-        identifier !== config.defaultRooIdentifier &&
-        this.isExtensionInstalled(identifier)
-      ) {
-        const adapter = new RooCodeAdapter(identifier);
-        this.rooAdapterMap.set(identifier, adapter);
-        logger.info(`Added RooCode adapter for: ${identifier}`);
-      } else if (identifier !== config.defaultRooIdentifier) {
-        logger.warn(`Extension not found: ${identifier}`);
-      }
     }
   }
 
@@ -97,26 +66,23 @@ export class ExtensionController extends EventEmitter {
   /**
    * Get RooCode adapter for specific extension ID
    */
-  getRooAdapter(extensionId?: string): RooCodeAdapter | undefined {
-    return this.rooAdapterMap.get(
-      extensionId || this.currentConfig.defaultRooIdentifier,
-    );
+  getRooAdapter(): RooCodeAdapter | undefined {
+    return this.rooAdapter;
   }
 
   /**
    * Send a message to RooCode via the appropriate adapter
    * This opens RooCode with the message and starts a task
    */
-  async sendToRooCode(message: string, extensionId?: string): Promise<void> {
-    const adapter = this.getRooAdapter(extensionId);
-    if (!adapter) {
+  async sendToRooCode(message: string): Promise<void> {
+    if (!this.rooAdapter) {
       logger.error(
-        `No RooCode adapter found for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`,
+        `No RooCode adapter found for extension: ${this.currentConfig.defaultRooIdentifier}`,
       );
       return;
     }
 
-    const taskStreams = adapter.executeRooTasks([
+    const taskStreams = this.rooAdapter.executeRooTasks([
       {
         workspacePath: this.workspacePath,
         taskId: `task-${Date.now()}`,
@@ -129,25 +95,10 @@ export class ExtensionController extends EventEmitter {
     ]);
 
     for await (const taskEvents of taskStreams) {
-      const taskId = taskEvents[0]?.data?.taskId || "unknown-task";
       try {
         for (const event of taskEvents) {
-          logger.info(`RooCode event for message "${message}":`, event);
-
-          if (event.name === RooCodeEventName.Message) {
-            // const messageEvent = event as TaskEvent<RooCodeEventName.Message>;
-            if (event.data.message?.text) {
-              // Only send response for final (non-partial) messages to avoid duplication
-              if (!event.data.message.partial) {
-                this.sendRooCodeResponseToServer(event.data.message.text);
-              }
-              
-              // outputChannel.appendLine(
-              //   `[${taskId}] Result: ${messageEvent.data.message.text}`,
-              // );
-              // Removed the executeCommand call that was causing duplication
-            }
-          }
+          logger.info(`RooCode event for message "${message}":`, JSON.stringify(event, null, 2));
+          this.sendRooCodeResponseToServer(event);
         }
       } catch (error) {
         logger.error(
@@ -209,43 +160,17 @@ export class ExtensionController extends EventEmitter {
       return;
     }
     try {
+
+    
       // Initialize all RooCode adapters
-      for (const [id, adapter] of this.rooAdapterMap) {
-        await adapter.initialize();
-        this.setupRooMessageHandlers(id, adapter);
-      }
-
-      // Check if at least one adapter is active
-      const hasActiveAdapter = Array.from(this.rooAdapterMap.values()).some(
-        (adapter) => adapter.isActive,
-      );
-
-      if (!hasActiveAdapter) {
+      this.rooAdapter?.initialize();
+      if (!this.rooAdapter?.isActive) {
         throw new Error(
           "No active extension found. This may be due to missing installations or activation issues.",
         );
       }
 
-      // Initialize task queue and events (with Redis fallback)
-      try {
-        this.taskQueue = new Queue("agent-tasks", {
-          connection: this.redisConfig,
-          defaultJobOptions: {
-            attempts: 3,
-            backoff: {
-              type: "exponential",
-              delay: 1000,
-            },
-          },
-        });
-        logger.info("Task queue initialized with Redis");
-      } catch (error) {
-        logger.warn(
-          "Redis connection failed, task queue will be disabled:",
-          error,
-        );
-        // Task queue will remain undefined, and we'll handle this in other methods
-      }
+      this.setupRooMessageHandlers();
 
       this.isInitialized = true;
       logger.info("Extension controller initialized successfully");
@@ -255,59 +180,14 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
-   * Create a new container
-   */
-  async createContainer(
-    image: string,
-    options: Docker.ContainerCreateOptions,
-  ): Promise<string> {
-    const container = await this.docker.createContainer({
-      Image: image,
-      ...options,
-    });
-    return container.id;
-  }
-
-  /**
-   * Start a container
-   */
-  async startContainer(containerId: string): Promise<void> {
-    const container = this.docker.getContainer(containerId);
-    await container.start();
-  }
-
-  /**
-   * Stop a container
-   */
-  async stopContainer(containerId: string): Promise<void> {
-    const container = this.docker.getContainer(containerId);
-    await container.stop();
-  }
-
-  /**
-   * Get container status
-   */
-  async getContainerStatus(containerId: string): Promise<any> {
-    const container = this.docker.getContainer(containerId);
-    const info = await container.inspect();
-    return {
-      id: info.Id,
-      status: info.State.Status,
-      running: info.State.Running,
-      exitCode: info.State.ExitCode,
-    };
-  }
-
-  /**
    * Setup message handlers for RooCode adapter
    */
-  private setupRooMessageHandlers(id: string, adapter: RooCodeAdapter): void {
-    const commandName = `${Commands.ExecuteRooResult}-${id}`;
+  private setupRooMessageHandlers(): void {
+    const commandName = `${Commands.ExecuteRooResult}`;
 
     // First remove existing command if any
-    const existing = this.activeTaskListeners.get(id);
-    if (existing) {
-      existing.dispose();
+    if (this.activeTaskListener) {
+      this.activeTaskListener.dispose();
     }
 
     // Check if command already exists before registering
@@ -327,7 +207,7 @@ export class ExtensionController extends EventEmitter {
             }
           },
         );
-        this.activeTaskListeners.set(id, disposable);
+        this.activeTaskListener = disposable;
       }
     });
   }
@@ -381,191 +261,48 @@ export class ExtensionController extends EventEmitter {
   /**
    * Get status of extensions
    */
-  getExtensionStatus(): Record<string, ExtensionStatus> {
-    const status: Record<string, ExtensionStatus> = {} as Record<
-      string,
-      ExtensionStatus
-    >;
-
-    // Roo variants status
-    for (const [extensionId, adapter] of this.rooAdapterMap) {
-      status[extensionId] = {
-        isInstalled: adapter?.isInstalled() ?? false,
-        isActive: adapter?.isActive ?? false,
-        version: adapter?.getVersion(),
-      };
-    }
-
-    return status;
+  getExtensionStatus(): ExtensionStatus {
+    return {
+      isInstalled: this.rooAdapter?.isInstalled() ?? false,
+      isActive: this.rooAdapter?.isActive ?? false,
+      version: this.rooAdapter?.getVersion(),
+    };
   }
 
   /**
    * Get detailed status of a specific agent
    */
-  getAgentStatus(agentId: string):
+  getAgentStatus():
     | {
         state: AgentStatus;
         lastHeartbeat: number;
         containerId?: string;
       }
     | undefined {
+
     // Check RooCode adapters first
-    const rooAdapter = this.rooAdapterMap.get(agentId);
-    if (rooAdapter) {
       return {
-        state: rooAdapter.isActive ? AgentStatus.RUNNING : AgentStatus.STOPPED,
-        lastHeartbeat: rooAdapter.lastHeartbeat || 0,
-        containerId: rooAdapter.containerId,
+        state: this.rooAdapter?.isActive ? AgentStatus.RUNNING : AgentStatus.STOPPED,
+        lastHeartbeat: this.rooAdapter?.lastHeartbeat || 0,
+        containerId: this.rooAdapter?.containerId,
       };
-    }
-
-    return undefined;
   }
 
-  /**
-   * Cleanup resources
-   */
-  /**
-   * Submit a task to the queue
-   */
-  async distributeTask(task: {
-    type: string;
-    data: any;
-    priority?: number;
-    targetAgentId?: string;
-    workspacePath?: string; // Path to workspace directory
-  }): Promise<{ taskId: string; agentId: string }> {
-    const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-    const workspacePath = task.workspacePath || this.workspacePath;
 
-    // Use controller's workspace path if not specified
-    task.workspacePath = workspacePath;
-    if (!this.taskQueue) {
-      throw new Error("Task queue not initialized");
-    }
-
-    // Select agent if not specified
-    const agentId = task.targetAgentId || this.selectBestAgent();
-    const job = await this.taskQueue.add(
-      task.type,
-      {
-        ...task.data,
-        agentId,
-        workspacePath: task.workspacePath || "", // Include workspace path in job data
-      },
-      {
-        priority: task.priority || 1,
-      },
-    );
-
-    if (!job.id) {
-      throw new Error("Failed to create task: missing job ID");
-    }
-
-    // Broadcast task assignment via WebSocket
-    if (this.ws) {
-      const message: IMessageFromAgent = {
-        messageType: EMessageFromAgent.TaskAssigned,
-        connectionType: EConnectionType.Agent,
-        agentId,
-        details: {
-          taskId: job.id,
-          taskType: task.type,
-          workspacePath: task.workspacePath || "", // Pass workspace path
-          timestamp: Date.now(),
-        },
-      };
-
-      this.ws.send(JSON.stringify(message));
-    }
-
-    // Track active task
-    this.activeTasks.set(taskId, {
-      workspacePath,
-      agentId,
-    });
-
-    // Create queue events listener
-    const queueEvents = new QueueEvents("agent-tasks", {
-      connection: this.redisConfig,
-    });
-
-    // Listen for task completion with proper typing
-    queueEvents.on("completed", ({ jobId }: { jobId: string }) => {
-      if (jobId === taskId) {
-        this.activeTasks.delete(taskId);
-      }
-    });
-
-    return {
-      taskId: job.id,
-      agentId,
-    };
-  }
-
-  /**
-   * Get task status
-   */
-  async getTaskStatus(taskId: string): Promise<any> {
-    if (!this.taskQueue) {
-      throw new Error("Task queue not initialized");
-    }
-
-    const job = await this.taskQueue.getJob(taskId);
-    if (!job) {
-      throw new Error("Task not found");
-    }
-
-    return {
-      id: job.id,
-      status: await job.getState(),
-      progress: job.progress,
-      result: job.returnvalue,
-      failedReason: job.failedReason,
-    };
-  }
-
-  private selectBestAgent(): string {
-    // Simple round-robin selection from active agents
-    const activeAgents = Array.from(this.rooAdapterMap.values())
-      .filter((adapter) => adapter.isActive)
-      .map((adapter) => adapter.getExtensionId());
-
-    if (activeAgents.length === 0) {
-      throw new Error("No active agents available");
-    }
-
-    this.lastAgentIndex = (this.lastAgentIndex + 1) % activeAgents.length;
-    return activeAgents[this.lastAgentIndex];
-  }
 
   async dispose(): Promise<void> {
-    // Cleanup task queue
-    if (this.taskQueue) {
-      await this.taskQueue.close();
-    }
 
     // Cleanup WebSocket server
     if (this.ws) {
       this.ws.close();
     }
 
-    // Cleanup Docker resources
-    // (Dockerode doesn't require explicit cleanup)
-
     this.removeAllListeners();
     this.isInitialized = false;
 
-    // Dispose all RooCode adapters and command listeners
-    for (const [id, listener] of this.activeTaskListeners) {
-      listener.dispose();
-    }
-    this.activeTaskListeners.clear();
+    this.activeTaskListener?.dispose();
 
-    for (const adapter of this.rooAdapterMap.values()) {
-      await adapter.dispose();
-    }
-    this.rooAdapterMap.clear();
+    this.rooAdapter?.dispose();
   }
 
   /**
@@ -583,19 +320,6 @@ export class ExtensionController extends EventEmitter {
     return this.workspacePath;
   }
 
-  /**
-   * Check if controller is busy (has active tasks)
-   */
-  public isBusy(): boolean {
-    return this.activeTasks.size > 0;
-  }
-
-  /**
-   * Get count of active tasks
-   */
-  public getActiveTaskCount(): number {
-    return this.activeTasks.size;
-  }
 
   connectToWSServer(port: number): void {
     try {
@@ -606,8 +330,10 @@ export class ExtensionController extends EventEmitter {
         this.ws.close();
       }
 
+      const wsUrl = this.currentConfig.wsUrl;
+
       // establish a connection to the websocket server
-      this.ws = new WebSocket(`ws://localhost:${port}`);
+      this.ws = new WebSocket(wsUrl);
       const agentId = uuidv4();
       this.currentAgentId = agentId;
 
@@ -615,11 +341,14 @@ export class ExtensionController extends EventEmitter {
         logger.info(`Connected to WebSocket server on port ${port}`);
 
         // Identify as an agent
-        const registrationMessage: IMessageFromAgent = {
-          messageType: EMessageToServer.Register,
-          connectionType: EConnectionType.Agent,
-          agentId,
-          metadata: {
+        const registrationMessage: Message = {
+          source: ConnectionSource.Agent,
+          type: ESystemMessage.Register,
+          agent: {
+            id: agentId,
+            workspacePath: this.workspacePath,
+          },
+          data: {
             name: "extension-controller",
             version: "1.0.0",
             capabilities: ["roocode-integration", "task-execution"],
@@ -630,52 +359,147 @@ export class ExtensionController extends EventEmitter {
           `Sending registration message: ${JSON.stringify(registrationMessage)}`,
         );
         this.ws?.send(JSON.stringify(registrationMessage));
+        this.rooAdapter?.setMessageHandler((message) => {
+          this.sendRooCodeResponseToServer(message);
+        });
       };
       this.ws.onmessage = async (event) => {
         try {
           const messageData = event.data.toString();
-          const message = JSON.parse(messageData) as IMessageFromServer;
-          logger.info(`[DEBUG] Agent ${this.currentAgentId} received message from WebSocket server: ${messageData}`);
+          const message = JSON.parse(messageData) as Message;
+          //logger.info(`[DEBUG] Agent ${this.currentAgentId} received message from WebSocket server: ${messageData}`);
 
-          switch (message.messageType) {
+          switch (message.type) {
             case EMessageFromServer.Ping:
-              const pongMessage: IMessageFromAgent = {
-                messageType: EMessageFromAgent.Pong,
-                connectionType: EConnectionType.Agent,
-                agentId: agentId,
-                details: {
+              const pongMessage: Message = {
+                source: ConnectionSource.Agent,
+                type: ESystemMessage.Pong,
+                agent: {
+                  id: agentId,
+                  workspacePath: this.workspacePath,
+                },
+                data: {
                   timestamp: message.timestamp,
                 },
               };
               this.ws?.send(JSON.stringify(pongMessage));
-              logger.info("Sent pong response to WebSocket server");
+              //logger.info("Sent pong response to WebSocket server");
               break;
 
-            case EMessageFromServer.TaskAssigned:
-              logger.info(
-                `Received task assigned from WebSocket server: ${messageData}`,
-              );
-              break;
             case EMessageFromServer.Registered:
               logger.info(
                 `Received registered message from WebSocket server: ${messageData}`,
               );
               break;
 
-            case EMessageFromServer.RooCodeMessage:
-              logger.info(
-                `[DEBUG] Agent ${this.currentAgentId} processing RooCode message from WebSocket server: ${messageData}`,
-              );
-              // Forward the message to RooCode
-              if (message.details?.message) {
-                logger.info(`[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.details.message}`);
-                await this.sendToRooCode(message.details.message);
+            case EMessageFromUI.SendMessageToTask:
+              // Send a message to an existing task in RooCode
+              if (message?.data?.message) {
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.data.message}`);
+                this.rooAdapter?.sendMessage(message.data.message, undefined, {
+                  taskId: message.data.taskId,
+                });
               } else {
                 logger.warn(
                   "RooCode message received but no message content found",
                 );
               }
               break;
+
+            case EMessageFromUI.GetActiveTaskIds:
+              logger.info(`[DEBUG] Agent ${this.currentAgentId} handling getCurrentTaskStack request`);
+              try {
+                const taskIds = await this.rooAdapter?.getCurrentTaskStack();
+                const response: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromAgent.ActiveTaskIdsResponse,
+                  agent: {
+                    id: this.currentAgentId!,
+                    workspacePath: this.workspacePath,
+                  },
+                  data: { taskIds },
+                };
+                this.ws?.send(JSON.stringify(response));
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} sent active task IDs: ${taskIds}`);
+              } catch (error) {
+                logger.error(`Failed to get active task IDs for agent ${this.currentAgentId}:`, error);
+              }
+              break;
+
+            case EMessageFromUI.GetProfiles:
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} handling getProfiles request`);
+                try {
+                  const profiles = await this.rooAdapter?.getProfiles();
+                  const response: Message = {
+                    source: ConnectionSource.Agent,
+                    type: EMessageFromAgent.ProfilesResponse,
+                    agent: {
+                      id: this.currentAgentId!,
+                      workspacePath: this.workspacePath,
+                    },
+                    data: { profiles },
+                  };
+                  this.ws?.send(JSON.stringify(response));
+                  logger.info(`[DEBUG] Agent ${this.currentAgentId} sent profiles: ${profiles}`);
+                } catch (error) {
+                  logger.error(`Failed to get profiles for agent ${this.currentAgentId}:`, error);
+                }
+              break;
+
+            case EMessageFromUI.GetActiveProfile:
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} handling getActiveProfile request`);
+                try {
+                  const activeProfile = await this.rooAdapter?.getActiveProfile();
+                  const response: Message = {
+                    source: ConnectionSource.Agent,
+                    type: EMessageFromAgent.ActiveProfileResponse,
+                    agent: {
+                      id: this.currentAgentId!,
+                      workspacePath: this.workspacePath,
+                    },
+                    data: { activeProfile },
+                  };
+                  this.ws?.send(JSON.stringify(response));
+                  logger.info(`[DEBUG] Agent ${this.currentAgentId} sent active profile: ${activeProfile}`);
+                } catch (error) {
+                  logger.error(`Failed to get active profile for agent ${this.currentAgentId}:`, error);
+                }
+              break;
+
+            case EMessageFromUI.CreateTask:
+              logger.info(`[DEBUG] Agent ${this.currentAgentId} handling startNewTask request`);
+              try {
+                const taskMessage = message?.data?.message || "";
+                const taskId = message?.data?.taskId || "";
+                const profile = message?.data?.profile || "";
+                const newTaskId = await this.startNewTask(taskMessage, profile);
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} handling startNewTask request: ${newTaskId}`);
+                const response: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromAgent.TaskStartedResponse,
+                  agent: {
+                    id: this.currentAgentId!,
+                    workspacePath: this.workspacePath,
+                  },
+                  data: { clientTaskId: taskId, agentTaskId: newTaskId, success: true },
+                };
+                this.ws?.send(JSON.stringify(response));
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} started new task: ${taskId}`);
+              } catch (error) {
+                logger.error(`Failed to start new task for agent ${this.currentAgentId}:`, error);
+                const response: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromAgent.TaskStartedResponse,
+                  agent: {
+                    id: this.currentAgentId!,
+                    workspacePath: this.workspacePath,
+                  },
+                  data: { success: false, error: error instanceof Error ? error.message : String(error) },
+                };
+                this.ws?.send(JSON.stringify(response));
+              }
+              break;
+
             case EMessageFromServer.Unregistered:
               logger.info(
                 `Received unregistered message from WebSocket server: ${messageData}`,
@@ -710,145 +534,70 @@ export class ExtensionController extends EventEmitter {
   /**
    * Send RooCode response back to WebSocket server for UI chat
    */
-  private sendRooCodeResponseToServer(response: string): void {
+  private sendRooCodeResponseToServer(event: RooCodeTaskEvent): void {
     if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
       logger.warn("WebSocket not connected, cannot send RooCode response");
       return;
     }
 
-    const responseMessage: IMessageFromAgent = {
-      messageType: EMessageFromAgent.RooCodeResponse,
-      connectionType: EConnectionType.Agent,
-      agentId: this.currentAgentId || "unknown-agent",
-      details: {
-        response,
-        timestamp: Date.now(),
+    const responseMessage: Message = {
+      source: ConnectionSource.Agent,
+      type: EMessageFromAgent.AgentResponse,
+      event: {
+        eventName: event.name,
+        ...event.data,
       },
+      agent: {
+        id: this.currentAgentId || "unknown-agent",
+        workspacePath: this.workspacePath,
+      },
+      data: {
+        timestamp: Date.now(),
+      }
     };
 
-    logger.info(`Sending RooCode response to server: ${response}`);
+    logger.info(`Sending RooCode response to server: ${JSON.stringify(event, null, 2)}`);
     this.ws.send(JSON.stringify(responseMessage));
   }
-}
 
-/**
- * Manages multiple controllers with different workspaces
- */
-export class ControllerManager {
-  private controllers: Map<string, ExtensionController> = new Map();
-  private activeControllerId?: string;
 
-  constructor(private readonly context?: vscode.ExtensionContext) {}
-
-  /**
-   * Create a new controller with specified workspace
-   */
-  createController(
-    id: string,
-    redisConfig: RedisConfig,
-    workspacePath: string,
-  ): ExtensionController {
-    if (this.controllers.has(id)) {
-      logger.warn(`Controller ${id} already exists - recreating`);
-      this.controllers.get(id)?.dispose();
+  async startNewTask(message: string, profile?: string): Promise<string> {
+    if (!this.rooAdapter) {
+      throw new Error(
+        `No RooCode adapter found for extension: ${this.currentConfig.defaultRooIdentifier}`,
+      );
     }
 
-    const controller = new ExtensionController(redisConfig, workspacePath);
-    this.controllers.set(id, controller);
-    this.activeControllerId = id;
-
-    logger.info(`Created new controller ${id} for workspace ${workspacePath}`);
-    return controller;
-  }
-
-  /**
-   * Get controller by ID
-   */
-  getController(id: string): ExtensionController | undefined {
-    return this.controllers.get(id);
-  }
-
-  /**
-   * Get active controller
-   */
-  getActiveController(): ExtensionController | undefined {
-    return this.activeControllerId
-      ? this.controllers.get(this.activeControllerId)
-      : undefined;
-  }
-
-  /**
-   * Set active controller
-   */
-  setActiveController(id: string): boolean {
-    if (!this.controllers.has(id)) {
-      logger.warn(`Failed to switch to controller ${id} - not found`);
-      return false;
-    }
-
-    const prevController = this.activeControllerId;
-    this.activeControllerId = id;
-
-    // Log controller switch
-    logger.info(
-      `Switched controller from ${prevController || "none"} to ${id}`,
-    );
-
-    // Update workspace context without removing other controllers
-    const controller = this.controllers.get(id)!;
-    const workspacePath = controller.getWorkspacePath();
-
-    if (workspacePath) {
-      const workspaceFolders = vscode.workspace.workspaceFolders || [];
-      const targetUri = vscode.Uri.file(workspacePath);
-
-      // Only add workspace if not already present
-      if (!workspaceFolders.some((f) => f.uri.fsPath === workspacePath)) {
-        vscode.workspace.updateWorkspaceFolders(
-          workspaceFolders.length, // Add at the end
-          0, // Don't remove any
-          { uri: targetUri, name: path.basename(workspacePath) },
-        );
+    try {
+      // If profile is provided, set it as active
+      if (profile) {
+        await this.rooAdapter.setActiveProfile(profile);
       }
-    }
 
-    if (this.context) {
-      this.context.globalState.update("lastActiveController", id);
-    }
+      // Start new task
+      const taskGenerator = this.rooAdapter.startNewTask({
+        workspacePath: this.workspacePath,
+        text: message,
+      });
 
-    // Ensure all controllers remain available
-    return true;
-  }
+      const firstEvent = await taskGenerator.next();
+      if (!firstEvent.value?.data?.taskId) {
+        logger.info(`[ERROR] Task ID not found in the first event ${JSON.stringify(firstEvent, null, 2)}`);
 
-  /**
-   * Remove controller
-   */
-  async removeController(id: string): Promise<void> {
-    const controller = this.controllers.get(id);
-    if (controller) {
-      await controller.dispose();
-      this.controllers.delete(id);
-      if (this.activeControllerId === id) {
-        this.activeControllerId = undefined;
+        throw new Error("Task ID not found in the first event");
       }
+      const taskId = firstEvent.value.data.taskId;
+
+      logger.info(`[DEBUG] Agent ${this.currentAgentId} started new task: ${taskId} with profile: ${profile}`);
+
+      // Continue consuming events in the background
+      this.consumeRooCodeEvents(taskGenerator, message);
+
+      return taskId;
+    } catch (error) {
+      logger.error("Failed to start new task:", error);
+      throw error;
     }
   }
 
-  /**
-   * Get all controller IDs
-   */
-  getControllerIds(): string[] {
-    return Array.from(this.controllers.keys());
-  }
-
-  /**
-   * Cleanup all controllers
-   */
-  async dispose(): Promise<void> {
-    for (const controller of this.controllers.values()) {
-      await controller.dispose();
-    }
-    this.controllers.clear();
-    this.activeControllerId = undefined;
-  }
 }

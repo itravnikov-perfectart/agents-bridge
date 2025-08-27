@@ -1,20 +1,21 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { logger } from "../utils/serverLogger";
 import { AgentManager } from "./agent-manager";
+
 import {
-  EConnectionType,
+  ConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
   EMessageFromUI,
-  EMessageToServer,
-} from "./message.enum";
-import {
-  IMessageFromAgent,
-  IMessageFromServer,
-  IMessageFromUI,
-  TMessageToServer,
-  WebSocketConfig,
-} from "./types";
+  ESystemMessage,
+  Message,
+} from "../core/types";
+
+export interface WebSocketConfig {
+  port: number;
+  pingInterval?: number;
+  connectionTimeout?: number;
+}
 
 export const createWebSocketServer = (config: WebSocketConfig) => {
   const { port, pingInterval = 10000, connectionTimeout = 30000 } = config;
@@ -44,34 +45,32 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
   wss.on("connection", (socket: WebSocket, req) => {
     logger.info(`🔗 New connection from ${req}`);
-    let connectionType: EConnectionType | undefined;
+    let source: ConnectionSource | undefined;
     let agentId: string | undefined;
 
     socket.on("message", (data) => {
       try {
-        const message = JSON.parse(data.toString()) as TMessageToServer;
-        connectionType = message.connectionType;
+        const message = JSON.parse(data.toString()) as Message;
+        source = message.source;
 
         logger.info(
           `Received message from ${req.socket.remoteAddress}: ${JSON.stringify(message)}`,
         );
 
-        if (connectionType === EConnectionType.UI) {
-          // Add UI client to tracking set
+        if (source === ConnectionSource.UI) {
           uiClients.add(socket);
-          logger.info(`[DEBUG] UI client connected. Total UI clients: ${uiClients.size}`);
-          handleUIConnection(message as IMessageFromUI, socket, agentManager, uiClients);
-        } else if (connectionType === EConnectionType.Agent) {
-          agentId = (message as IMessageFromAgent).agentId;
+          handleUIConnection(message, socket, agentManager);
+        } else if (source === ConnectionSource.Agent) {
+          agentId = message.agent?.id;
 
           handleAgentConnection(
-            message as IMessageFromAgent,
+            message,
             socket,
             agentManager,
             uiClients,
           );
         } else {
-          logger.warn(`Unknown connection type: ${connectionType}`);
+          logger.warn(`Unknown connection type: ${source}`);
         }
       } catch (error) {
         logger.error("Invalid message format", error);
@@ -79,8 +78,8 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
     });
 
     socket.on("close", (code, reason) => {
-      switch (connectionType) {
-        case EConnectionType.Agent:
+      switch (source) {
+        case ConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
             broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
@@ -94,7 +93,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             );
           }
           break;
-        case EConnectionType.UI:
+        case ConnectionSource.UI:
           uiClients.delete(socket);
           logger.info(
             `UI client disconnected, code: ${code}, reason: ${reason}. Total UI clients: ${uiClients.size}`,
@@ -109,8 +108,8 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
     });
 
     socket.on("error", (error) => {
-      switch (connectionType) {
-        case EConnectionType.Agent:
+      switch (source) {
+        case ConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
             broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
@@ -120,7 +119,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             logger.error(`WebSocket error for agent:`, error);
           }
           break;
-        case EConnectionType.UI:
+        case ConnectionSource.UI:
           logger.error(`WebSocket error for UI connection:`, error);
           break;
         default:
@@ -157,14 +156,13 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 export type WebSocketServerInstance = ReturnType<typeof createWebSocketServer>;
 
 const handleUIConnection = (
-  message: IMessageFromUI,
+  message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
-  uiClients: Set<WebSocket>,
 ) => {
-  const { messageType } = message;
+  const { type } = message;
 
-  switch (messageType) {
+  switch (type) {
     case EMessageFromUI.GetAgents:
       const agents = Array.from(agentManager.agents.entries()).map(
         ([id, agent]) => ({
@@ -172,98 +170,71 @@ const handleUIConnection = (
           status: "connected",
           lastHeartbeat: agent.lastHeartbeat,
           connectedAt: agent.connectedAt,
-          metadata: agent.metadata,
           gracePeriod: agent.gracePeriod,
         }),
       );
 
-      const messageAgentList: IMessageFromServer = {
-        messageType: EMessageFromServer.AgentList,
-        details: {
+      const messageAgentList: Message = {
+        source: ConnectionSource.Server,
+        type: EMessageFromServer.AgentList,
+        data: {
           agents,
         },
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageAgentList));
       break;
-    case EMessageFromUI.SendToRooCode:
-      const agentId = message.details?.agentId;
-      const messageFromUI = message.details?.message;
+    
+    case EMessageFromUI.GetActiveProfile:
+    case EMessageFromUI.GetProfiles:
+    case EMessageFromUI.GetActiveTaskIds:
+    case EMessageFromUI.CreateTask:
+    case EMessageFromUI.SendMessageToTask:
+      const agentId = message.agent?.id;
+      if (!agentId) {
+        logger.warn(`Agent ID not found for RooCode message`);
+        return;
+      }
       const agentToSendMessage = agentManager.agents.get(agentId);
       if (!agentToSendMessage) {
         logger.warn(`Agent ${agentId} not found for RooCode message`);
         return;
       }
       
-      // Debug: Check how many agents are registered
-      const totalAgents = agentManager.agents.size;
-      logger.info(`[DEBUG] Server has ${totalAgents} registered agents. Sending to agent ${agentId}`);
-      
-      const messageToSend: IMessageFromServer = {
-        messageType: EMessageFromServer.RooCodeMessage,
-        details: {
-          message: messageFromUI,
-        },
+      const messageToSend: Message = {
+        source: message.source,
+        type,
+        data: message.data,
         timestamp: Date.now(),
       };
       
-      logger.info(`[DEBUG] Server sending RooCode message to agent ${agentId}: ${JSON.stringify(messageToSend)}`);
       agentToSendMessage.socket.send(JSON.stringify(messageToSend));
       logger.info(
-        `Forwarded message to RooCode via agent ${agentId}: ${messageFromUI}`,
+        `Forwarded message to RooCode via agent ${agentId}: ${JSON.stringify(message.data)}`,
       );
-      break;
-    case EMessageFromUI.CreateTask:
-    case EMessageFromUI.StartProcess:
-    case EMessageFromUI.StopProcess:
-    case EMessageFromUI.GetProcessStatus:
-    case EMessageFromUI.ListProcesses:
-      logger.info(
-        `Received message from UI: ${messageType} which is not handled`,
-      );
-
-      break;
-
-    //   const agentIdToCreateTask = message.details?.agentId;
-    //   const agentToAssignTask = agentManager.agents.get(agentIdToCreateTask);
-    //   if (!agentToAssignTask) {
-    //     logger.error(
-    //       `Agent ${agentIdToCreateTask} not found for task assignment`,
-    //     );
-    //     return;
-    //   }
-
-    //   const messageToCreateTask: IMessageFromServer = {
-    //     messageType: EMessageFromServer.CreateTask,
-    //     details: {
-    //       task: message.details?.task,
-    //     },
-    //     timestamp: Date.now(),
-    //   };
-    //   agentToAssignTask.socket.send(JSON.stringify(messageToSend));
-    //   logger.info(
-    //     `Assigned task ${message.details?.task.id} to agent ${agentIdToCreateTask}`,
-    //     );
-    //   break;
-    case EMessageToServer.Register:
+    break;
+  
+    case ESystemMessage.Register:
       logger.info(`UI client connected`);
-      const messageRegistered: IMessageFromServer = {
-        messageType: EMessageFromServer.Registered,
+      const messageRegistered: Message = {
+        source: ConnectionSource.Server,
+        type: EMessageFromServer.Registered,
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageRegistered));
       break;
-    case EMessageToServer.Unregister:
+    case ESystemMessage.Unregister:
       logger.info(`UI client disconnected`);
-      const messageUnregistered: IMessageFromServer = {
-        messageType: EMessageFromServer.Unregistered,
+      const messageUnregistered: Message = {
+        source: ConnectionSource.Server,
+        type: EMessageFromServer.Unregistered,
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageUnregistered));
       socket.close();
       break;
     default:
-      logger.warn(`Unknown UI message type: ${messageType}`);
+      logger.warn(`Unknown UI message type: ${type}`);
       break;
   }
 };
@@ -281,14 +252,14 @@ const broadcastAgentUpdate = (
       status: action === 'connected' ? "connected" : "disconnected",
       lastHeartbeat: agent.lastHeartbeat,
       connectedAt: agent.connectedAt,
-      metadata: agent.metadata,
       gracePeriod: agent.gracePeriod,
     }),
   );
 
-  const updateMessage: IMessageFromServer = {
-    messageType: EMessageFromServer.AgentUpdate,
-    details: {
+  const updateMessage: Message = {
+    source: ConnectionSource.Server,
+    type: EMessageFromServer.AgentUpdate,
+    data: {
       action,
       agentId,
       agents,
@@ -310,20 +281,27 @@ const broadcastAgentUpdate = (
 };
 
 const handleAgentConnection = (
-  message: IMessageFromAgent,
+  message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
   uiClients: Set<WebSocket>,
 ) => {
-  const { messageType, agentId } = message;
+  const { type, agent } = message;
 
-  switch (messageType) {
-    case EMessageToServer.Register:
+  const agentId = agent?.id;
+
+  if (!agentId) {
+    logger.warn(`Agent ID not found for RooCode message`);
+    return;
+  }
+
+  switch (type) {
+    case ESystemMessage.Register:
       // Use the agent's provided ID instead of generating a new one
       const registredAgentId = agentManager.registerAgentWithId(
         agentId, // Use the agent's provided ID
         socket,
-        message.metadata,
+        agent?.workspacePath,
       );
       const totalAgentsAfterReg = agentManager.agents.size;
       logger.info(`[DEBUG] Agent connected: ${registredAgentId}. Total agents: ${totalAgentsAfterReg}`);
@@ -332,9 +310,12 @@ const handleAgentConnection = (
       const allAgentIds = Array.from(agentManager.agents.keys());
       logger.info(`[DEBUG] All registered agent IDs: ${allAgentIds.join(', ')}`);
       
-      const messageRegistered: IMessageFromServer = {
-        messageType: EMessageFromServer.Registered,
-        agentId: registredAgentId,
+      const messageRegistered: Message = {
+        source: ConnectionSource.Server,
+        type: EMessageFromServer.Registered,
+        agent: {
+          id: registredAgentId,
+        },
         timestamp: Date.now(),
       };
       socket.send(JSON.stringify(messageRegistered));
@@ -342,32 +323,19 @@ const handleAgentConnection = (
       // Broadcast agent update to UI clients
       broadcastAgentUpdate(uiClients, agentManager, 'connected', registredAgentId);
       break;
-    case EMessageFromAgent.TaskAssigned:
-      // For non-register messages, check if agent exists
-      const agent = agentManager.getAgent(agentId);
-      if (!agent) {
-        logger.warn(`Agent ${agentId} not found`);
-        return;
-      }
-      const taskId = message.details?.taskId;
-      const taskType = message.details?.taskType;
-      const workspacePath = message.details?.workspacePath;
-      logger.info(
-        `Received task assigned from UI: ${taskId}, ${taskType}, ${workspacePath}`,
-      );
-      break;
-    case EMessageFromAgent.Ping:
+   
+    case ESystemMessage.Ping:
       // For non-register messages, check if agent exists
       const agentPing = agentManager.getAgent(agentId);
       if (!agentPing) {
         logger.warn(`Agent ${agentId} not found for ping`);
         return;
       }
-      const timestamp = message.details?.timestamp;
+      const timestamp = message?.timestamp;
       agentManager.updateHeartbeat(agentId);
       logger.info(`Received ping from agent ${agentId} at ${timestamp}`);
       break;
-    case EMessageFromAgent.Pong:
+    case ESystemMessage.Pong:
       // For non-register messages, check if agent exists
       const agentPong = agentManager.getAgent(agentId);
       if (!agentPong) {
@@ -377,7 +345,11 @@ const handleAgentConnection = (
       agentManager.updateHeartbeat(agentId);
       logger.info(`Received pong from agent ${agentId}`);
       break;
-    case EMessageFromAgent.RooCodeResponse:
+    case EMessageFromAgent.ProfilesResponse:
+    case EMessageFromAgent.ActiveProfileResponse:
+    case EMessageFromAgent.TaskStartedResponse:
+    case EMessageFromAgent.ActiveTaskIdsResponse:
+    case EMessageFromAgent.AgentResponse:
       // Forward RooCode response to all UI clients
       const agentResponse = agentManager.getAgent(agentId);
       if (!agentResponse) {
@@ -385,12 +357,12 @@ const handleAgentConnection = (
         return;
       }
       
-      const responseMessage: IMessageFromServer = {
-        messageType: EMessageFromServer.RooCodeResponse,
-        details: {
-          agentId,
-          response: message.details?.response,
-        },
+      const responseMessage: Message = {
+        source: message.source,
+        type: message.type,
+        agent: message.agent,
+        data: message.data,
+        event: message.event,
         timestamp: Date.now(),
       };
       
@@ -404,15 +376,17 @@ const handleAgentConnection = (
           uiClients.delete(client);
         }
       });
-      logger.info(`Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${message.details?.response}`);
+      logger.info(`Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${JSON.stringify(message)}`);
       break;
-    case EMessageToServer.Unregister:
+      
+   
+    case ESystemMessage.Unregister:
       agentManager.removeAgent(agentId);
       logger.info(`Agent disconnected: ${agentId}`);
       socket.close();
       break;
     default:
-      logger.warn(`Unknown agent message type: ${messageType}`);
+      logger.warn(`Unknown agent message type: ${type}`);
       break;
   }
 };

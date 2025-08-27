@@ -1,18 +1,43 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { Send, User, Bot, Loader2 } from 'lucide-react';
-import type { Chat, Agent, ChatMessage } from '../types';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Send, User, Bot } from 'lucide-react';
 import { cn } from '../utils/cn';
+import { useAddMessage, useMessagesByTaskId } from '../queries/useMessages';
+import { useActiveProfile, useProfiles } from '../queries/useProfiles';
+import { useWebSocketConnection } from '../providers/connection.provider';
+import { TaskEvent } from '@roo-code/types';
+import { Message } from '../types/messages.types';
+
+import { v4 as uuidv4 } from 'uuid';
+import { useTasksByAgentId, useUpdateTask } from '../queries/useTasks';
 
 interface ChatWindowProps {
-  chat: Chat;
-  agent: Agent;
-  onSendMessage: (message: string) => Promise<void>;
+  agentId: string;
+  taskId: string;
+  isNewTaskChat: boolean;
 }
 
-export const ChatWindow = ({ chat, agent, onSendMessage }: ChatWindowProps) => {
+export const ChatWindow = ({ 
+  agentId, 
+  taskId,
+  isNewTaskChat,
+}: ChatWindowProps) => {
+
+  const { getProfiles, getActiveProfile, startNewTask, sendMessageToTask } = useWebSocketConnection();
+
+  const addMessageMutation = useAddMessage();
+  const { data: messages = [] } = useMessagesByTaskId(taskId);
+  const { data: profiles = [] } = useProfiles();
+  const { data: activeProfile } = useActiveProfile();
+  const updateTaskMutation = useUpdateTask();
+
   const [message, setMessage] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Объединяем сообщения из чата и задачи
+  const allMessages = React.useMemo(() => {
+   return messages
+  }, [messages]);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -20,33 +45,53 @@ export const ChatWindow = ({ chat, agent, onSendMessage }: ChatWindowProps) => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [chat.messages]);
+  }, [allMessages]);
+
+  useEffect(() => {
+    getProfiles(agentId),
+    getActiveProfile(agentId)
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!message.trim() || isLoading) return;
+    if (!message.trim()) return;
 
     const messageText = message.trim();
     setMessage('');
-    setIsLoading(true);
 
     try {
-      await onSendMessage(messageText);
+      if (!isNewTaskChat) {
+        // Существующая задача - используем sendMessage
+        sendMessageToTask(agentId, taskId, messageText);
+      } else {
+        // Новая задача - используем startNewTask
+        const profile = selectedProfile || activeProfile;
+        console.log('selectedProfile and activeProfile', selectedProfile, activeProfile);
+        startNewTask(agentId, taskId, messageText, profile);
+        updateTaskMutation.mutate({
+          agentId,
+          taskId,
+          task: {
+            id: taskId,
+            agentId,
+            isNewTask: false,
+          }
+        });
+        console.log('🚀 Started new task');
+      }
+      addMessageMutation.mutate({
+        taskId: taskId,
+        message: {
+          type: 'user',
+          content: messageText
+        }
+      })
     } catch (error) {
       console.error('Failed to send message:', error);
-    } finally {
-      setIsLoading(false);
     }
   };
-
-  const formatTime = (timestamp: number) => {
-    return new Date(timestamp).toLocaleTimeString('ru-RU', {
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-  };
-
-  const renderMessageContent = (msg: ChatMessage) => {
+/*
+  const renderMessageContent = (msg: Message) => {
     // Если это JSON ответ, пытаемся его распарсить и красиво отобразить
     if (msg.type === 'agent' && msg.content.startsWith('{')) {
       try {
@@ -90,49 +135,46 @@ export const ChatWindow = ({ chat, agent, onSendMessage }: ChatWindowProps) => {
     return msg.content;
   };
 
+  */
+
   return (
-    <div className="flex flex-col h-full bg-background">
+    <div className="flex flex-col w-full h-full bg-background">
       {/* Заголовок чата */}
-      <div className="p-4 border-b border-border bg-card">
+      <div className="flex-shrink-0 p-4 border-b border-border bg-card">
         <div className="flex items-center justify-between">
           <div>
-            <h3 className="font-semibold">{chat.title}</h3>
+            <h3 className="font-semibold">{agentId}</h3>
             <p className="text-sm text-muted-foreground">
-              Агент: {agent.id} • Тип чата: {chat.type}
+              Agent: {agentId}
             </p>
-          </div>
-          <div className="text-xs text-muted-foreground">
-            Создан: {formatTime(chat.createdAt)}
           </div>
         </div>
       </div>
 
       {/* Сообщения */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {chat.messages.length === 0 ? (
+      <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
+        {allMessages.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
             <Bot className="h-8 w-8 mx-auto mb-2" />
-            <p>Начните диалог с агентом</p>
+            <p>Start a conversation with the agent</p>
           </div>
         ) : (
           <>
-            {chat.messages.map((msg) => (
+            {allMessages.map((msg, index) => (
               <div
-                key={msg.id}
+                key={index}
                 className={cn(
-                  "flex gap-3 max-w-[80%]",
+                  "flex gap-3 w-full",
                   msg.type === 'user' ? "ml-auto" : "mr-auto"
                 )}
               >
                 {/* Аватар */}
                 <div className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-                  msg.type === 'user' ? "bg-primary text-primary-foreground order-2" : "bg-secondary"
+                  msg.type === 'user' ? "bg-primary text-primary-foreground" : "bg-secondary"
                 )}>
                   {msg.type === 'user' ? (
                     <User className="h-4 w-4" />
-                  ) : msg.type === 'loading' ? (
-                    <Loader2 className="h-4 w-4 animate-spin" />
                   ) : (
                     <Bot className="h-4 w-4" />
                   )}
@@ -141,25 +183,13 @@ export const ChatWindow = ({ chat, agent, onSendMessage }: ChatWindowProps) => {
                 {/* Сообщение */}
                 <div className={cn(
                   "rounded-lg p-3 max-w-full",
-                  msg.type === 'user' ? "bg-primary text-primary-foreground order-1" : "bg-muted"
+                  msg.type === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
                 )}>
-                  {msg.type === 'loading' ? (
-                    <div className="flex items-center gap-2 text-muted-foreground">
-                      <span>Агент думает...</span>
+                  <div className="space-y-2">
+                    <div className="text-sm">
+                      {JSON.stringify(msg)}
                     </div>
-                  ) : (
-                    <div className="space-y-2">
-                      <div className="text-sm">
-                        {renderMessageContent(msg)}
-                      </div>
-                      <div className="text-xs opacity-70">
-                        {formatTime(msg.timestamp)}
-                        {msg.status && (
-                          <span className="ml-2">• {msg.status}</span>
-                        )}
-                      </div>
-                    </div>
-                  )}
+                  </div>
                 </div>
               </div>
             ))}
@@ -169,32 +199,57 @@ export const ChatWindow = ({ chat, agent, onSendMessage }: ChatWindowProps) => {
       </div>
 
       {/* Ввод сообщения */}
-      <div className="p-4 border-t border-border bg-card">
+      <div className="flex-shrink-0 p-4 border-t border-border bg-card">
         <form onSubmit={handleSubmit} className="flex gap-2">
-          <textarea
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
-            placeholder="Введите сообщение..."
-            className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[60px] max-h-32"
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                handleSubmit(e);
+          <div className="flex-1 flex flex-col gap-2">
+            <textarea
+              value={message}
+              onChange={(e) => setMessage(e.target.value)}
+              placeholder={
+                isNewTaskChat 
+                  ? "Start new task..."
+                  : "Send message to task..."
               }
-            }}
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={!message.trim() || isLoading}
-            className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
-          >
-            {isLoading ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <Send className="h-4 w-4" />
-            )}
-          </button>
+              className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[60px] max-h-32"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit(e);
+                }
+              }}
+            />
+            
+            {/* Нижняя строка с профилем и кнопкой отправки */}
+            <div className="flex items-center gap-2">
+              {/* Выбор профиля для новых чатов */}
+              {profiles.length > 0 && (
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-muted-foreground">Profile:</span>
+                  <select
+                    value={selectedProfile || ''}
+                    onChange={(e) => setSelectedProfile(e.target.value)}
+                    className="text-xs border border-input rounded bg-background px-2 py-1 focus:outline-none focus:ring-2 focus:ring-ring min-w-32"
+                  >
+                    {profiles.map((profile) => (
+                      <option key={profile} value={profile}>
+                        {profile} {profile === activeProfile ? '(Active)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+              
+              <div className="ml-auto">
+                <button
+                  type="submit"
+                  disabled={!message.trim()}
+                  className="inline-flex items-center justify-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground ring-offset-background transition-colors hover:bg-primary/90 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50"
+                >
+                  <Send className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          </div>
         </form>
       </div>
     </div>

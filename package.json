@@ -26,9 +26,9 @@
   "contributes": {
     "commands": [
       {
-        "command": "agent-maestro.connectToWSServer",
-        "title": "Agent Maestro: Connect to WebSocket Server",
-        "category": "Agent Maestro"
+        "command": "agent-bridge.connectToWSServer",
+        "title": "Agent Bridge: Connect to WebSocket Server",
+        "category": "Agent Bridge"
       }
     ],
     "configuration": {

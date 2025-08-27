@@ -1,16 +1,22 @@
 import { logger } from "../utils/serverLogger";
 import {
-  EConnectionType,
-  EMessageFromAgent,
-  EMessageFromServer,
-} from "./message.enum";
-import {
-  AgentConnection,
-  IMessageFromAgent,
-  IMessageFromServer,
-} from "./types";
+  ConnectionSource,
+  ESystemMessage,
+  Message,
+} from "../core/types";
+
 import { v4 as uuidv4 } from "uuid";
 import { WebSocket } from "ws";
+
+type AgentConnection = {
+  id: string;
+  socket: WebSocket;
+  lastHeartbeat: number;
+  lastPingSent: number;
+  connectedAt: number;
+  gracePeriod?: boolean;
+  workspacePath?: string;
+}
 
 export class AgentManager {
   public agents = new Map<string, AgentConnection>();
@@ -24,7 +30,7 @@ export class AgentManager {
     this.startHeartbeatPing();
   }
 
-  registerAgent(socket: WebSocket, metadata?: Record<string, unknown>): string {
+  registerAgent(socket: WebSocket, workspacePath?: string): string {
     const agentId = uuidv4();
     const now = Date.now();
     this.agents.set(agentId, {
@@ -33,10 +39,9 @@ export class AgentManager {
       lastHeartbeat: now,
       lastPingSent: now,
       connectedAt: now,
-      gracePeriod: true, // Don't ping immediately, give client time to establish
-      metadata,
+      workspacePath: "",
     });
-    logger.info(`Agent ${agentId} registered with metadata:`, metadata);
+    logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
     // Remove grace period after 30 seconds
     setTimeout(() => {
@@ -52,7 +57,7 @@ export class AgentManager {
     return agentId;
   }
 
-  registerAgentWithId(agentId: string, socket: WebSocket, metadata?: Record<string, unknown>): string {
+  registerAgentWithId(agentId: string, socket: WebSocket, workspacePath?:string): string {
     const now = Date.now();
     this.agents.set(agentId, {
       id: agentId,
@@ -60,10 +65,10 @@ export class AgentManager {
       lastHeartbeat: now,
       lastPingSent: now,
       connectedAt: now,
+      workspacePath,
       gracePeriod: true, // Don't ping immediately, give client time to establish
-      metadata,
     });
-    logger.info(`Agent ${agentId} registered with metadata:`, metadata);
+    logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
     // Remove grace period after 30 seconds
     setTimeout(() => {
@@ -89,9 +94,10 @@ export class AgentManager {
 
       if (agent.socket.readyState === WebSocket.OPEN) {
         try {
-          const messageToSend: IMessageFromServer = {
-            messageType: EMessageFromServer.Ping,
-            details: {
+          const messageToSend: Message = {
+            source: ConnectionSource.Server,
+            type: ESystemMessage.Ping,
+            data: {
               timestamp: now,
             },
           };
@@ -141,7 +147,7 @@ export class AgentManager {
     return this.agents.get(agentId);
   }
 
-  broadcast(message: IMessageFromServer): void {
+  broadcast(message: Message): void {
     this.agents.forEach((agent) => {
       if (agent.socket.readyState === WebSocket.OPEN) {
         agent.socket.send(JSON.stringify(message));

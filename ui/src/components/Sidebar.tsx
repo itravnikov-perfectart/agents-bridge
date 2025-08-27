@@ -1,27 +1,26 @@
 
 import { Avatar, AvatarFallback } from '@radix-ui/react-avatar';
-import { Separator } from '@radix-ui/react-separator';
 import { User, Wifi, WifiOff, Clock } from 'lucide-react';
-import type { Agent } from '../types';
+import { Agent } from '../types';
 import { cn } from '../utils/cn';
+import { useAgents } from '../queries/useAgents';
+import { useWebSocketConnection } from '../providers/connection.provider';
+import { useEffect } from 'react';
 
 interface SidebarProps {
-  agents: Agent[];
   selectedAgent: string | null;
   onSelectAgent: (agentId: string) => void;
-  wsConnected: boolean;
-  onReconnect?: () => void;
-  connectionAttempts?: number;
 }
 
 export function Sidebar({ 
-  agents, 
-  selectedAgent, 
-  onSelectAgent, 
-  wsConnected, 
-  onReconnect,
-  connectionAttempts = 0 
+  selectedAgent,
+  onSelectAgent
 }: SidebarProps) {
+
+  const { getAgents } = useWebSocketConnection();
+
+  const { data: agents = [] } = useAgents();
+
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
@@ -31,11 +30,11 @@ export function Sidebar({
 
   const getTimeSince = (timestamp: number) => {
     const seconds = Math.floor((Date.now() - timestamp) / 1000);
-    if (seconds < 60) return `${seconds}с назад`;
+    if (seconds < 60) return `${seconds}s ago`;
     const minutes = Math.floor(seconds / 60);
-    if (minutes < 60) return `${minutes}м назад`;
+    if (minutes < 60) return `${minutes}m ago`;
     const hours = Math.floor(minutes / 60);
-    return `${hours}ч назад`;
+    return `${hours}h ago`;
   };
 
   const getStatusColor = (status: Agent['status']) => {
@@ -64,44 +63,13 @@ export function Sidebar({
     }
   };
 
+  useEffect(() => {
+    getAgents();
+  }, [getAgents]);
+
   return (
     <div className="w-80 bg-card border-r border-border flex flex-col h-full">
-      {/* Заголовок */}
-      <div className="p-4 border-b border-border">
-        <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-lg">Agents</h2>
-          <div className="flex items-center gap-2">
-            <div className={cn(
-              "flex items-center gap-2 text-sm",
-              wsConnected ? "text-green-600" : "text-red-600"
-            )}>
-              {wsConnected ? <Wifi className="h-4 w-4" /> : <WifiOff className="h-4 w-4" />}
-              {wsConnected ? 'Connected' : 'Disconnected'}
-            </div>
-            {!wsConnected && onReconnect && (
-              <button
-                onClick={onReconnect}
-                className="text-xs px-2 py-1 bg-primary text-primary-foreground rounded hover:bg-primary/90 transition-colors"
-              >
-                Reconnect
-              </button>
-            )}
-          </div>
-        </div>
-        <div className="flex items-center justify-between mt-1">
-          <p className="text-sm text-muted-foreground">
-            Active agents: {agents.length}
-          </p>
-          {connectionAttempts > 0 && (
-            <p className="text-xs text-muted-foreground">
-              Attempts: {connectionAttempts}
-            </p>
-          )}
-        </div>
-      </div>
-
-      {/* Список агентов */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="h-full overflow-y-auto">
         {agents.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
             <User className="h-8 w-8 mx-auto mb-2" />
@@ -114,15 +82,14 @@ export function Sidebar({
                 key={agent.id}
                 onClick={() => onSelectAgent(agent.id)}
                 className={cn(
-                  "p-3 rounded-lg cursor-pointer transition-colors mb-2",
-                  "hover:bg-accent hover:text-accent-foreground",
+                  "p-3 rounded-lg cursor-pointer transition-colors mb-2 bg-background",
+                  "hover:bg-accent hover:text-accent-foreground border-2",
                   selectedAgent === agent.id 
-                    ? "bg-primary text-primary-foreground" 
-                    : "bg-background"
+                    ? "border-primary" 
+                    : "border-transparent" 
                 )}
               >
                 <div className="flex items-start gap-3">
-                  {/* Аватар агента */}
                   <Avatar className="h-10 w-10 flex-shrink-0">
                     <AvatarFallback className="bg-secondary text-secondary-foreground flex items-center justify-center h-full w-full rounded-full">
                       {agent.id.slice(0, 2).toUpperCase()}
@@ -130,52 +97,33 @@ export function Sidebar({
                   </Avatar>
 
                   <div className="flex-1 min-w-0">
-                    {/* ID агента */}
                     <div className="flex items-center gap-2 mb-1">
                       <span className="font-medium truncate">{agent.id}</span>
                       <div className={cn("w-2 h-2 rounded-full", getStatusColor(agent.status))} />
                     </div>
 
-                    {/* Статус */}
                     <div className="flex items-center gap-1 mb-1">
                       {getStatusIcon(agent.status)}
                       <span className="text-xs capitalize">{agent.status}</span>
                     </div>
 
-                    {/* Время подключения */}
                     <div className="text-xs text-muted-foreground">
                       Connected: {formatTime(agent.connectedAt)}
                     </div>
 
-                    {/* Последний heartbeat */}
                     {agent.lastHeartbeat && (
                       <div className="text-xs text-muted-foreground">
                         Activity: {getTimeSince(agent.lastHeartbeat)}
                       </div>
                     )}
 
-                    {/* Grace period индикатор */}
-                    {agent.gracePeriod && (
-                      <div className="text-xs text-yellow-600 mt-1">
-                        Grace period active
+                    {agent.workspacePath && (
+                      <div className="text-xs text-muted-foreground">
+                        Workspace: {agent.workspacePath}
                       </div>
                     )}
                   </div>
                 </div>
-
-                {/* Метаданные агента */}
-                {agent.metadata && Object.keys(agent.metadata).length > 0 && (
-                  <>
-                    <Separator className="my-2" />
-                    <div className="text-xs text-muted-foreground">
-                      {Object.entries(agent.metadata).slice(0, 2).map(([key, value]) => (
-                        <div key={key} className="truncate">
-                          {key}: {JSON.stringify(value)}
-                        </div>
-                      ))}
-                    </div>
-                  </>
-                )}
               </div>
             ))}
           </div>

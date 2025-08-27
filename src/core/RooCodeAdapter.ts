@@ -41,6 +41,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private extensionId: string;
   private activeTasks: Set<string> = new Set();
   private taskSemaphore: Semaphore;
+  private messageHandler: ((message: TaskEvent) => void) | undefined;
   public lastHeartbeat = 0;
   public containerId?: string;
 
@@ -52,6 +53,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     setInterval(() => {
       this.lastHeartbeat = Date.now();
     }, 5000); // Update heartbeat every 5 seconds
+  }
+
+  public setMessageHandler(handler: (message: TaskEvent) => void): void {
+    this.messageHandler = handler;
   }
 
   /**
@@ -228,6 +233,11 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    * Enqueue event for async generators
    */
   private enqueueEvent(taskId: string, event: TaskEvent): void {
+    if (this.messageHandler) {
+      this.messageHandler(event);
+      return;
+    }
+
     // Check if there are waiting resolvers first
     const resolvers = this.taskEventResolvers.get(taskId);
     if (resolvers && resolvers.length > 0) {

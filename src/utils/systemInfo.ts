@@ -19,9 +19,7 @@ export interface OsInfo {
 export interface SystemInfo {
   name: string;
   version: string;
-  extensions: {
-    [ext: string]: ExtensionStatus;
-  };
+  extension: ExtensionStatus;
   vscodeVersion: string;
   os: OsInfo;
   workspace: string;
@@ -59,9 +57,7 @@ export function getSystemInfo(controller: ExtensionController): SystemInfo {
   return {
     name,
     version,
-    extensions: {
-      ...extensionStatus,
-    },
+    extension: extensionStatus,
     vscodeVersion,
     os: osInfo,
     workspace,
