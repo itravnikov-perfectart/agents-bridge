@@ -27,45 +27,45 @@
     "commands": [
       {
         "command": "agent-maestro.getStatus",
-        "title": "Agent Maestro: Get Status",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Get Status",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.sendToRoo",
-        "title": "Agent Maestro: Send to RooCode",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Send to RooCode",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.executeRooResult",
-        "title": "Agent Maestro: Execute RooCode Result",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Execute RooCode Result",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.saveRooCodeSettings",
-        "title": "Agent Maestro: Save RooCode Settings",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Save RooCode Settings",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.connectToWSServer",
-        "title": "Agent Maestro: Connect to WebSocket Server",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Connect to WebSocket Server",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.refreshStatus",
-        "title": "Agent Maestro: Refresh Status",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Refresh Status",
+        "category": "Agent Bridge"
       },
       {
         "command": "agent-maestro.showOutput",
-        "title": "Agent Maestro: Show Output",
-        "category": "Agent Maestro"
+        "title": "Agent Bridge: Show Output",
+        "category": "Agent Bridge"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
           "id": "agent-maestro",
-          "title": "Agent Maestro",
+          "title": "Agent Bridge",
           "icon": "$(server)"
         }
       ]
@@ -138,7 +138,7 @@
       ]
     },
     "configuration": {
-      "title": "Agent Maestro",
+      "title": "Agent Bridge",
       "properties": {
         "agentMaestro.rooCodeIntegration": {
           "type": "boolean",
@@ -184,7 +184,7 @@
     "ws:killvite": "./scripts/ws-server.sh killvite",
     "kill:all": "lsof -ti:3000-3010,8080 | xargs kill -9 2>/dev/null || echo 'No servers running on ports 3000-3010 or 8080'",
     "kill:vite": "pkill -f 'vite.*serve.*src/ui' || echo 'No Vite UI servers found'",
-    "build:ui": "vite build",
+    "build:ui": "cd ui && vite build",
     "build": "pnpm run compile && pnpm run build:ui",
     "build:extension": "pnpm run compile && pnpm run vscode:prepublish",
     "prebuild": "pnpm install",

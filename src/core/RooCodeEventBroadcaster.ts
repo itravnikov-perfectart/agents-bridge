@@ -187,12 +187,8 @@ export class RooCodeEventBroadcaster {
     yield* this.adapter.sendMessage(message, images, options);
   }
 
-  public async *startNewTask(options: any = {}): AsyncGenerator<any, void, unknown> {
-    yield* this.adapter.startNewTask(options);
-  }
-
-  public async *executeRooTasks(tasks: any[], maxConcurrent = 5): AsyncGenerator<any[], void, unknown> {
-    yield* this.adapter.executeRooTasks(tasks, maxConcurrent);
+  public async startNewTask(options: any = {}): Promise<string> {
+    return this.adapter.startNewTask(options);
   }
 
   public getActiveTaskIds(): string[] {

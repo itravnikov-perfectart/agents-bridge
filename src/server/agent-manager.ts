@@ -1,19 +1,24 @@
 import { logger } from "../utils/serverLogger";
 import {
-  EConnectionSource,
-  EMessageFromAgent,
-  EMessageFromServer,
-} from "./message.enum";
-import {
-  Agent,
-  IMessageFromAgent,
-  IMessageFromServer,
-} from "./types";
+  ConnectionSource,
+  ESystemMessage,
+  Message,
+} from "../core/types";
 import { v4 as uuidv4 } from "uuid";
 import { WebSocket } from "ws";
 
+type AgentConnection = {
+  id: string;
+  socket: WebSocket;
+  lastHeartbeat: number;
+  lastPingSent: number;
+  connectedAt: number;
+  gracePeriod?: boolean;
+  workspacePath?: string;
+}
+
 export class AgentManager {
-  public agents = new Map<string, Agent>();
+  public agents = new Map<string, AgentConnection>();
   private pingInterval: number;
   private heartbeatTimeout: number;
   private pingIntervalId?: NodeJS.Timeout;
@@ -24,25 +29,25 @@ export class AgentManager {
     this.startHeartbeatPing();
   }
 
-  registerAgent(socket: WebSocket, metadata?: Record<string, unknown>): string {
+  registerAgent(socket: WebSocket, workspacePath?: string): string {
     const agentId = uuidv4();
     const now = Date.now();
     this.agents.set(agentId, {
       id: agentId,
       socket,
       lastHeartbeat: now,
-      
+      lastPingSent: 0,
       connectedAt: now,
-      gracePeriod: 30000, // Don't ping immediately, give client time to establish
-      metadata,
+      workspacePath: workspacePath || "",
+      gracePeriod: true, // Don't ping immediately, give client time to establish
     });
-    logger.info(`Agent ${agentId} registered with metadata:`, metadata);
+    logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
     // Remove grace period after 30 seconds
     setTimeout(() => {
       const agent = this.agents.get(agentId);
       if (agent) {
-        agent.gracePeriod = 0;
+        agent.gracePeriod = false;
         logger.info(
           `Grace period ended for agent ${agentId}, will now send pings`,
         );
@@ -52,24 +57,24 @@ export class AgentManager {
     return agentId;
   }
 
-  registerAgentWithId(agentId: string, socket: WebSocket, metadata?: Record<string, unknown>): string {
+  registerAgentWithId(agentId: string, socket: WebSocket, workspacePath?: string): string {
     const now = Date.now();
     this.agents.set(agentId, {
       id: agentId,
       socket,
       lastHeartbeat: now,
-      
+      lastPingSent: 0,
       connectedAt: now,
-      gracePeriod: 30000, // Don't ping immediately, give client time to establish
-      metadata,
+      workspacePath: workspacePath || "",
+      gracePeriod: true, // Don't ping immediately, give client time to establish
     });
-    logger.info(`Agent ${agentId} registered with metadata:`, metadata);
+    logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
     // Remove grace period after 30 seconds
     setTimeout(() => {
       const agent = this.agents.get(agentId);
       if (agent) {
-        agent.gracePeriod = 0;
+        agent.gracePeriod = false;
         logger.info(`Grace period ended for agent ${agentId}, will now send pings`);
       }
     }, 30000);
@@ -82,16 +87,17 @@ export class AgentManager {
     const now = Date.now();
     this.agents.forEach((agent, id) => {
       // Skip agents in grace period
-      if (agent.gracePeriod > 0) {
+      if (agent.gracePeriod) {
         logger.info(`Agent ${id} in grace period, skipping ping`);
         return;
       }
 
       if (agent.socket.readyState === WebSocket.OPEN) {
         try {
-          const messageToSend: IMessageFromServer = {
-            messageType: EMessageFromServer.Ping,
-            details: {
+          const messageToSend: Message = {
+            source: ConnectionSource.Server,
+            type: ESystemMessage.Ping,
+            data: {
               timestamp: now,
             },
           };
@@ -137,11 +143,11 @@ export class AgentManager {
     }
   }
 
-  getAgent(agentId: string): Agent | undefined {
+  getAgent(agentId: string): AgentConnection | undefined {
     return this.agents.get(agentId);
   }
 
-  broadcast(message: IMessageFromServer): void {
+  broadcast(message: Message): void {
     this.agents.forEach((agent) => {
       if (agent.socket.readyState === WebSocket.OPEN) {
         agent.socket.send(JSON.stringify(message));

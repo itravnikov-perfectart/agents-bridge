@@ -41,6 +41,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private extensionId: string;
   private activeTasks: Set<string> = new Set();
   private taskSemaphore: Semaphore;
+  private messageHandler: ((message: TaskEvent) => void) | undefined;
   public lastHeartbeat = 0;
   public containerId?: string;
   // Optional external subscriber to receive all Roo events immediately
@@ -54,6 +55,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     setInterval(() => {
       this.lastHeartbeat = Date.now();
     }, 5000); // Update heartbeat every 5 seconds
+  }
+
+  public setMessageHandler(handler: (message: TaskEvent) => void): void {
+    this.messageHandler = handler;
   }
 
   /**
@@ -225,6 +230,11 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    * Enqueue event for async generators
    */
   private enqueueEvent(taskId: string, event: TaskEvent): void {
+    if (this.messageHandler) {
+      this.messageHandler(event);
+      return;
+    }
+
     // Check if there are waiting resolvers first
     const resolvers = this.taskEventResolvers.get(taskId);
     if (resolvers && resolvers.length > 0) {
@@ -307,9 +317,9 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   /**
    * Start a new task and return async generator for events
    */
-  async *startNewTask(
+  async startNewTask(
     options: RooCodeTaskOptions = {},
-  ): AsyncGenerator<TaskEvent, void, unknown> {
+  ): Promise<string> {
     if (!this.api) {
       throw new Error("RooCode API not available");
     }
@@ -342,8 +352,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       // Start the task
       const taskId = await this.api.startNewTask(options);
 
-      // Create and yield from event stream
-      yield* this.createTaskEventStream(taskId);
+      return taskId;
     } catch (error) {
       logger.error("Error starting new RooCode task:", error);
       throw error;
@@ -739,50 +748,4 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     await super.dispose();
   }
 
-  /**
-   * Execute multiple RooCode tasks in parallel with concurrency control
-   */
-  public async *executeRooTasks(
-    tasks: RooCodeTaskOptions[],
-    maxConcurrent = 5,
-  ): AsyncGenerator<TaskEvent[], void, unknown> {
-    if (!this.api) {
-      throw new Error("RooCode API not available");
-    }
-
-    logger.info(
-      `Executing ${tasks.length} RooCode tasks with max concurrency ${maxConcurrent}`,
-    );
-
-    const executing = new Set<Promise<TaskEvent[]>>();
-    const results: TaskEvent[][] = [];
-
-    for (const task of tasks) {
-      const taskPromise = (async () => {
-        const events: TaskEvent[] = [];
-        for await (const event of this.startNewTask(task)) {
-          events.push(event);
-        }
-        return events;
-      })();
-
-      executing.add(taskPromise);
-      taskPromise.then((result) => {
-        executing.delete(taskPromise);
-        results.push(result);
-      });
-
-      if (executing.size >= maxConcurrent) {
-        await Promise.race(executing);
-      }
-    }
-
-    // Wait for remaining tasks
-    await Promise.all(executing);
-
-    // Yield all results
-    for (const result of results) {
-      yield result;
-    }
-  }
 }

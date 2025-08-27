@@ -1,9 +1,8 @@
 import * as vscode from "vscode";
 
-export interface AgentMaestroConfiguration {
-  rooVariantIdentifiers: string[];
+export interface AgentConfiguration {
   defaultRooIdentifier: string;
-  allowOutsideWorkspaceAccess: boolean;
+  wsUrl: string;
   wsPort: number;
   wsPingInterval: number;
 }
@@ -12,20 +11,17 @@ export interface AgentMaestroConfiguration {
  * Configuration keys used in VS Code workspace configuration
  */
 export const CONFIG_KEYS = {
-  ROO_VARIANT_IDENTIFIERS: "agent-maestro.rooVariantIdentifiers",
-  DEFAULT_ROO_IDENTIFIER: "agent-maestro.defaultRooIdentifier",
-  ALLOW_OUTSIDE_WORKSPACE_ACCESS: "agent-maestro.allowOutsideWorkspaceAccess",
-  WS_PORT: "agent-maestro.wsPort",
-  WS_PING_INTERVAL: "agent-maestro.wsPingInterval",
+  DEFAULT_ROO_IDENTIFIER: "agent-bridge.defaultRooIdentifier",
+  WS_URL: "agent-bridge.wsUrl",
+  WS_PING_INTERVAL: "agent-bridge.wsPingInterval",
 } as const;
 
 /**
  * Default configuration values
  */
-export const DEFAULT_CONFIG: AgentMaestroConfiguration = {
-  rooVariantIdentifiers: [],
-  defaultRooIdentifier: "rooveterinaryinc.roo-cline",
-  allowOutsideWorkspaceAccess: false,
+export const DEFAULT_CONFIG: AgentConfiguration = {
+  defaultRooIdentifier: "RooVeterinaryInc.roo-cline",
+  wsUrl: "ws://localhost:8080",
   wsPort: 8080,
   wsPingInterval: 10000,
 };
@@ -33,26 +29,19 @@ export const DEFAULT_CONFIG: AgentMaestroConfiguration = {
 /**
  * Reads the current configuration from VS Code workspace settings
  */
-export const readConfiguration = (): AgentMaestroConfiguration => {
+export const readConfiguration = (): AgentConfiguration => {
   const config = vscode.workspace.getConfiguration();
 
   return {
-    rooVariantIdentifiers: config.get<string[]>(
-      CONFIG_KEYS.ROO_VARIANT_IDENTIFIERS,
-      DEFAULT_CONFIG.rooVariantIdentifiers,
-    ),
     defaultRooIdentifier: config.get<string>(
       CONFIG_KEYS.DEFAULT_ROO_IDENTIFIER,
       DEFAULT_CONFIG.defaultRooIdentifier,
     ),
-    allowOutsideWorkspaceAccess: config.get<boolean>(
-      CONFIG_KEYS.ALLOW_OUTSIDE_WORKSPACE_ACCESS,
-      DEFAULT_CONFIG.allowOutsideWorkspaceAccess,
+    wsUrl: config.get<string>(
+      CONFIG_KEYS.WS_URL,
+      DEFAULT_CONFIG.wsUrl,
     ),
-    wsPort: config.get<number>(
-      CONFIG_KEYS.WS_PORT,
-      DEFAULT_CONFIG.wsPort,
-    ),
+    wsPort: 8080, // Default port, could be made configurable
     wsPingInterval: config.get<number>(
       CONFIG_KEYS.WS_PING_INTERVAL,
       DEFAULT_CONFIG.wsPingInterval,

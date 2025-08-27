@@ -1,4 +1,4 @@
-import { RooCodeEventName } from "@roo-code/types";
+import { RooCodeEventName, TaskEvent as RooCodeTaskEvent } from "@roo-code/types";
 
 export enum AgentStatus {
   RUNNING = 'running',
@@ -10,4 +10,147 @@ export enum AgentStatus {
 export interface TaskEvent<T = RooCodeEventName> {
   name: T;
   data: any;
+}
+
+export enum ESystemMessage {
+  Register = "register",
+  Unregister = "unregister",
+  Ping = "ping",
+  Pong = "pong",
+  Error = "error",
+}
+
+export enum EMessageFromServer {
+  Registered = "registered",
+  Unregistered = "unregistered",
+  Ping = "ping",
+  Error = "error",
+  AgentList = "agentList",
+  AgentUpdate = "agentUpdate",
+  RooCodeMessage = "rooCodeMessage",
+  RooCodeResponse = "rooCodeResponse",
+  RooCodePartial = "rooCodePartial",
+  RooCodeCommand = "rooCodeCommand",
+  CreateTask = "createTask",
+}
+
+export enum EMessageFromUI {
+  GetAgents = "getAgents",
+  CreateTask = "createTask",
+  SendMessageToTask = "sendMessageToTask",
+  GetActiveTaskIds = "getActiveTaskIds",
+  GetProfiles = "getProfiles",
+  GetActiveProfile = "getActiveProfile",
+  SetConfiguration = "setConfiguration",
+  Register = "register",
+  Unregister = "unregister",
+  SendToRooCode = "sendToRooCode",
+  RooCodeCommand = "rooCodeCommand",
+}
+
+export enum EMessageFromAgent {
+  Register = "register",
+  Unregister = "unregister",
+  Pong = "pong",
+  Ping = "ping",
+  AgentResponse = "agentResponse",
+  ActiveTaskIdsResponse = "activeTaskIdsResponse",
+  ProfilesResponse = "profilesResponse", 
+  ActiveProfileResponse = "activeProfileResponse",
+  TaskStartedResponse = "taskStartedResponse",
+  MessageSentResponse = "messageSentResponse",
+  ConfigurationApplied = "configurationApplied",
+  RooCodeResponse = "rooCodeResponse",
+  RooCodeEvent = "rooCodeEvent",
+  RooCodeCommandResponse = "rooCodeCommandResponse",
+  RooCodeStatus = "rooCodeStatus",
+  RooCodeConfiguration = "rooCodeConfiguration",
+  RooCodeProfiles = "rooCodeProfiles",
+  RooCodeTaskHistory = "rooCodeTaskHistory",
+  RooCodeTaskDetails = "rooCodeTaskDetails",
+}
+
+export enum EMessageToServer {
+  Register = "register",
+  Unregister = "unregister",
+}
+
+export enum ERooCodeCommand {
+  GetStatus = "getStatus",
+  GetConfiguration = "getConfiguration",
+  SetConfiguration = "setConfiguration",
+  GetProfiles = "getProfiles",
+  GetActiveProfile = "getActiveProfile",
+  SetActiveProfile = "setActiveProfile",
+  CreateProfile = "createProfile",
+  UpdateProfile = "updateProfile",
+  DeleteProfile = "deleteProfile",
+  GetTaskHistory = "getTaskHistory",
+  GetTaskDetails = "getTaskDetails",
+  ClearCurrentTask = "clearCurrentTask",
+  CancelCurrentTask = "cancelCurrentTask",
+  ResumeTask = "resumeTask",
+  PressPrimaryButton = "pressPrimaryButton",
+  PressSecondaryButton = "pressSecondaryButton",
+  SendMessage = "sendMessage",
+  StartNewTask = "startNewTask",
+}
+
+export enum ConnectionSource {
+  Agent = "agent",
+  UI = "ui",
+  Server = "server",
+}
+
+export type Message = {
+  type: EMessageFromAgent | EMessageFromUI | EMessageFromServer | ESystemMessage;
+  source: ConnectionSource;
+  timestamp?: number;
+  agent?: {
+    id?: string;
+    workspacePath?: string;
+  }
+  data?: Record<string, any>;
+  event?: RooCodeTaskEvent;
+}
+
+// Legacy message types for backward compatibility
+export interface IMessageFromAgent {
+  messageType: EMessageFromAgent;
+  connectionType: ConnectionSource;
+  agentId: string;
+  details: {
+    response?: string;
+    partial?: boolean;
+    extensionId?: string;
+    workspacePath?: string;
+    timestamp?: number;
+    [key: string]: any;
+  };
+}
+
+export interface IMessageFromServer {
+  messageType: EMessageFromServer;
+  details?: {
+    agents?: any[];
+    message?: string;
+    command?: string;
+    parameters?: any;
+    extensionId?: string;
+    task?: any;
+    timestamp?: number;
+    [key: string]: any;
+  };
+  timestamp?: number;
+}
+
+export interface IMessageFromUI {
+  messageType: EMessageFromUI;
+  connectionType: ConnectionSource;
+  details?: {
+    agentId?: string;
+    message?: string;
+    options?: any;
+    [key: string]: any;
+  };
 }
