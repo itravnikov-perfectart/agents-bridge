@@ -19,7 +19,7 @@ export const CONFIG_KEYS = {
  * Default configuration values
  */
 export const DEFAULT_CONFIG: AgentConfiguration = {
-  defaultRooIdentifier: "rooveterinaryinc.roo-cline",
+  defaultRooIdentifier: "RooVeterinaryInc.roo-cline",
   wsUrl: "ws://localhost:8080",
   wsPingInterval: 10000,
 };

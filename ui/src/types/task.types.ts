@@ -3,4 +3,5 @@ export type Task = {
   agentId: string;
   name?: string;
   isNewTask?: boolean;
+  isCompleted?: boolean;
 }

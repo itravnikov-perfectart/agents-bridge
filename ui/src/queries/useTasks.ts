@@ -57,7 +57,7 @@ export const useUpdateTask = () => {
   return useMutation({
     mutationFn: (request: UpdateTaskRequest) => {
       queryClient.setQueryData(getTasksByAgentId(request.agentId).queryKey, 
-      (old: Task[] | undefined) => old?.map(task => task.id === request.taskId ? request.task : task) || [])
+      (old: Task[] | undefined) => old?.map(task => task.id === request.taskId ? { ...task, ...request.task } : task) || [])
       return Promise.resolve()
     }
   })

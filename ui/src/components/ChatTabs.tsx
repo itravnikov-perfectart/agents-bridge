@@ -6,6 +6,8 @@ import { ChatWindow } from './ChatWindow';
 import { useWebSocketConnection } from '../providers/connection.provider';
 import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
 import { v4 as uuidv4 } from 'uuid';
+import { getMessagesByTaskId } from '../queries/useMessages';
+import { useQueryClient } from '@tanstack/react-query';
 
 interface ChatTabsProps {
   selectedAgent: string | null;
@@ -17,6 +19,7 @@ export function ChatTabs({
   const [activeTabIndex, setActiveTabIndex] = useState<string | null>(null);
   const { getActiveTaskIds } = useWebSocketConnection();
   
+  const queryClient = useQueryClient();
   const {data: agentTasks} = useTasksByAgentId(selectedAgent);
 
   const addTaskMutation = useAddTask();
@@ -83,7 +86,10 @@ export function ChatTabs({
         {/* Табы */}
         <div className="flex w-full items-center border-b border-border bg-background">
           <Tabs.List className="flex overflow-x-auto items-center h-12 px-4 gap-1">
-            {agentTasks?.map((task, index) => (
+            {agentTasks?.map((task, index) => {
+              const messages = queryClient.getQueryData(getMessagesByTaskId(task.id).queryKey) || [];
+              const name = messages?.[0]?.content || '';
+              return (
               <Tabs.Trigger
                 key={task.id}
                 value={String(index)}
@@ -94,9 +100,11 @@ export function ChatTabs({
                 )}
               >
                  <MessageCircle className="h-4 w-4 shrink-0" />
-                <span className="truncate">{task.isNewTask ? 'New Chat' : task.id}</span>
+                <span className="truncate">{task.isNewTask ? 'New Chat' : name || task.id}</span>
               </Tabs.Trigger>
-            ))}
+            )}
+            
+            )}
           </Tabs.List>
 
           {/* Кнопка создания нового чата */}
@@ -119,6 +127,7 @@ export function ChatTabs({
             >
               <ChatWindow
                 isNewTaskChat={task.isNewTask || false}
+                isCompleted={task.isCompleted || false}
                 agentId={selectedAgent}
                 taskId={task.id}
               />

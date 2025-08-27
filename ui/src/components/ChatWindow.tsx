@@ -1,24 +1,27 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, Bot } from 'lucide-react';
+import ReactMarkdown from 'react-markdown';
 import { cn } from '../utils/cn';
 import { useAddMessage, useMessagesByTaskId } from '../queries/useMessages';
 import { useActiveProfile, useProfiles } from '../queries/useProfiles';
 import { useWebSocketConnection } from '../providers/connection.provider';
 
 import { useUpdateTask } from '../queries/useTasks';
-import { RooCodeEventName } from '@roo-code/types';
 import { Message } from '../types/messages.types';
+import { ModeSelector } from './ModeSelector';
 
 interface ChatWindowProps {
   agentId: string;
   taskId: string;
   isNewTaskChat: boolean;
+  isCompleted: boolean;
 }
 
 export const ChatWindow = ({ 
   agentId, 
   taskId,
   isNewTaskChat,
+  isCompleted,
 }: ChatWindowProps) => {
 
   const { getProfiles, getActiveProfile, startNewTask, sendMessageToTask } = useWebSocketConnection();
@@ -30,6 +33,7 @@ export const ChatWindow = ({
   const updateTaskMutation = useUpdateTask();
 
   const [message, setMessage] = useState('');
+  const [selectedMode, setSelectedMode] = useState<string>('code');
   const [selectedProfile, setSelectedProfile] = useState<string | undefined>();
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -111,7 +115,9 @@ export const ChatWindow = ({
           if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
             return (
               <div className="space-y-3">
-                <div className="font-medium">{parsed.question}</div>
+                <div className="font-medium">
+                  <ReactMarkdown>{parsed.question}</ReactMarkdown>
+                </div>
                 <div className="space-y-2">
                   <div className="text-sm text-muted-foreground">Варианты ответов:</div>
                   <div className="grid gap-2">
@@ -137,16 +143,29 @@ export const ChatWindow = ({
             </pre>
           );
         } catch {
-          // Если не JSON, отображаем как обычный текст
-          return msg.content;
+          // Если не JSON, отображаем как Markdown
+          return (
+            <div className="prose prose-sm dark:prose-invert max-w-none">
+              <ReactMarkdown>{msg.content}</ReactMarkdown>
+            </div>
+          );
         }
       } else {
-        return msg.content;
+        // Отображаем обычный текст как Markdown
+        return (
+          <div className="prose prose-sm dark:prose-invert max-w-none">
+            <ReactMarkdown>{msg.content}</ReactMarkdown>
+          </div>
+        );
       }
 
     } else {
-      return msg.content;
-
+      // Пользовательские сообщения тоже рендерим как Markdown
+      return (
+        <div className="prose prose-sm dark:prose-invert max-w-none">
+          <ReactMarkdown>{msg.content}</ReactMarkdown>
+        </div>
+      );
     }
 
   };
@@ -154,17 +173,7 @@ export const ChatWindow = ({
 
   return (
     <div className="flex flex-col w-full h-full bg-background">
-      {/* Заголовок чата */}
-      <div className="flex-shrink-0 p-4 border-b border-border bg-card">
-        <div className="flex items-center justify-between">
-          <div>
-            <h3 className="font-semibold">{agentId}</h3>
-            <p className="text-sm text-muted-foreground">
-              Agent: {agentId}
-            </p>
-          </div>
-        </div>
-      </div>
+
 
       {/* Сообщения */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4 min-h-0">
@@ -213,9 +222,11 @@ export const ChatWindow = ({
         )}
       </div>
 
-      {/* Ввод сообщения */}
+
       <div className="flex-shrink-0 p-4 border-t border-border bg-card">
-        <form onSubmit={handleSubmit} className="flex gap-2">
+      {isCompleted && <div>Task is completed</div>}
+      {!isCompleted &&
+        (<form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 flex flex-col gap-2">
             <textarea
               value={message}
@@ -253,6 +264,12 @@ export const ChatWindow = ({
                   </select>
                 </div>
               )}
+
+              <ModeSelector
+                selectedMode={selectedMode}
+                onModeChange={setSelectedMode}
+                disabled={isCompleted}
+              />
               
               <div className="ml-auto">
                 <button
@@ -265,7 +282,7 @@ export const ChatWindow = ({
               </div>
             </div>
           </div>
-        </form>
+        </form>)}
       </div>
     </div>
   );

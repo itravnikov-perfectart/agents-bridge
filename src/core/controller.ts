@@ -23,6 +23,7 @@ import {
 import { TaskEvent as RooCodeTaskEvent } from "./types";
 
 import { v4 as uuidv4 } from 'uuid';
+import { RooCodeSettings } from "@roo-code/types";
 
 /**
  * Core controller to manage Cline, RooCode and WQ Maestro extensions
@@ -329,6 +330,25 @@ export class ExtensionController extends EventEmitter {
               }
               break;
 
+            case EMessageFromUI.SetConfiguration:
+              logger.info(`[DEBUG] Agent ${this.currentAgentId} handling setConfiguration request`);
+              try {
+                const configuration = message?.data?.configuration || {};
+                await this.rooAdapter?.setConfiguration(configuration);
+                const response: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromAgent.ConfigurationApplied,
+                  agent: {
+                    id: this.currentAgentId!,
+                    workspacePath: this.workspacePath,
+                  },
+                };
+                this.ws?.send(JSON.stringify(response));
+              } catch (error) {
+                logger.error(`Failed to set configuration for agent ${this.currentAgentId}:`, error);
+              }
+              break;
+
             case EMessageFromUI.GetActiveTaskIds:
               logger.info(`[DEBUG] Agent ${this.currentAgentId} handling getCurrentTaskStack request`);
               try {
@@ -484,7 +504,7 @@ export class ExtensionController extends EventEmitter {
   }
 
 
-  async startNewTask(message: string, profile?: string): Promise<string> {
+  async startNewTask(message: string, profile?: string, configuration?: RooCodeSettings): Promise<string> {
     if (!this.rooAdapter) {
       throw new Error(
         `No RooCode adapter found for extension: ${this.currentConfig.defaultRooIdentifier}`,
@@ -497,10 +517,32 @@ export class ExtensionController extends EventEmitter {
         await this.rooAdapter.setActiveProfile(profile);
       }
 
+      const taskConfiguration = configuration || {};
+
       // Start new task
       const taskId = await this.rooAdapter.startNewTask({
         workspacePath: this.workspacePath,
         text: message,
+        configuration: {
+          autoApprovalEnabled: true,
+          alwaysAllowReadOnly: true,
+          alwaysAllowReadOnlyOutsideWorkspace: true,
+          alwaysAllowWrite: true,
+          alwaysAllowWriteOutsideWorkspace: true,
+          alwaysAllowWriteProtected: true,
+          writeDelayMs: 1,
+          alwaysAllowBrowser: true,
+          alwaysApproveResubmit: true,
+          requestDelaySeconds: 1,
+          alwaysAllowMcp: true,
+          alwaysAllowModeSwitch: true,
+          alwaysAllowSubtasks: true,
+          alwaysAllowExecute: true,
+          alwaysAllowFollowupQuestions: true,
+          followupAutoApproveTimeoutMs: 1,
+          alwaysAllowUpdateTodoList: true,
+          ...taskConfiguration,
+        }
       });
 
       logger.info(`[DEBUG] Agent ${this.currentAgentId} started new task: ${taskId} with profile: ${profile}`);

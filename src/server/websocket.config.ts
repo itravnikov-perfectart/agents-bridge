@@ -171,6 +171,7 @@ const handleUIConnection = (
           lastHeartbeat: agent.lastHeartbeat,
           connectedAt: agent.connectedAt,
           gracePeriod: agent.gracePeriod,
+          workspacePath: agent.workspacePath,
         }),
       );
 
@@ -253,6 +254,7 @@ const broadcastAgentUpdate = (
       lastHeartbeat: agent.lastHeartbeat,
       connectedAt: agent.connectedAt,
       gracePeriod: agent.gracePeriod,
+      workspacePath: agent.workspacePath,
     }),
   );
 

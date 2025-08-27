@@ -36,6 +36,7 @@ export enum EMessageFromUI {
   GetActiveTaskIds = "getActiveTaskIds",
   GetProfiles = "getProfiles",
   GetActiveProfile = "getActiveProfile",
+  SetConfiguration = "setConfiguration",
 }
 
 export enum EMessageFromAgent {
@@ -45,6 +46,7 @@ export enum EMessageFromAgent {
   ActiveProfileResponse = "activeProfileResponse",
   TaskStartedResponse = "taskStartedResponse",
   MessageSentResponse = "messageSentResponse",
+  ConfigurationApplied = "configurationApplied",
 }
 
 export enum ConnectionSource {

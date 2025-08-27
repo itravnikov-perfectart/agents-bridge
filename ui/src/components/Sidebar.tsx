@@ -90,15 +90,9 @@ export function Sidebar({
                 )}
               >
                 <div className="flex items-start gap-3">
-                  <Avatar className="h-10 w-10 flex-shrink-0">
-                    <AvatarFallback className="bg-secondary text-secondary-foreground flex items-center justify-center h-full w-full rounded-full">
-                      {agent.id.slice(0, 2).toUpperCase()}
-                    </AvatarFallback>
-                  </Avatar>
-
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium truncate">{agent.id}</span>
+                      <span className="font-medium truncate">{agent.workspacePath?.split('/').pop()}</span>
                       <div className={cn("w-2 h-2 rounded-full", getStatusColor(agent.status))} />
                     </div>
 
@@ -117,9 +111,9 @@ export function Sidebar({
                       </div>
                     )}
 
-                    {agent.workspacePath && (
+                    {agent.id && (
                       <div className="text-xs text-muted-foreground">
-                        Workspace: {agent.workspacePath}
+                        ID: {agent.id}
                       </div>
                     )}
                   </div>

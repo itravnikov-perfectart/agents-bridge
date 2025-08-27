@@ -35,6 +35,8 @@ interface WebSocketProviderProps extends React.PropsWithChildren {
   heartbeatInterval?: number;
 }
 
+let prevMessage = '';
+
 export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   children,
   url = 'ws://localhost:8080',
@@ -100,18 +102,46 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     switch (message.type) {
       case EMessageFromAgent.AgentResponse:
         switch (message.event?.eventName) {
+          case RooCodeEventName.TaskAborted:
+            updateTaskMutation.mutate({
+              agentId: message.agent?.id || "",
+              taskId: message.event!.taskId!.toString(),
+              task: {
+                id: message.event!.taskId!.toString(),
+                isCompleted: true,
+              }
+            });
+            break;
           case RooCodeEventName.TaskCreated:
             getActiveTaskIds(message.agent?.id || "");
             break;
           case RooCodeEventName.Message:
 
-            console.log('isEmpty',!message.event?.message.text, message.event?.message.text, message.event, )
-            const isEmpty = !message.event?.message.text
-            const isPartial = message.event?.message.partial
-            if (isEmpty || isPartial) {
+            const isEmpty = !message.event?.message?.text
+            const isPartial = message.event?.message?.partial
+            const say = message.event?.message?.say;
+
+            if (say === 'api_req_started') {
               break;
             }
-            const isUser = message.event?.message.say === 'user_feedback'
+
+            if (say === 'completion_result') {
+              updateTaskMutation.mutate({
+                agentId: message.agent?.id || "",
+                taskId: message.event!.taskId!.toString(),
+                task: {
+                  id: message.event!.taskId!.toString(),
+                  isCompleted: true,
+                }
+              });
+              break;
+            }
+ 
+            const isUser = say === 'user_feedback'
+            if (isEmpty || isPartial || prevMessage === message.event?.message?.text) {
+              break;
+            }
+            prevMessage = message.event?.message?.text || '';
             addMessageMutation.mutate({
               taskId: message.event!.taskId!.toString(),
               message: {

@@ -31,6 +31,7 @@ export async function activate(context: vscode.ExtensionContext) {
   // Initialize with either VSCode workspace or empty path
   const initialWorkspacePath =
     vscode.workspace.workspaceFolders?.[0]?.uri?.path || "";
+
   controller = new ExtensionController(initialWorkspacePath);
 
 
