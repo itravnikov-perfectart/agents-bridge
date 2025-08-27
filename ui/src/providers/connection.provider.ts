@@ -1,9 +1,11 @@
 import React, { createContext, useContext, useCallback, useRef, useEffect, useState } from 'react';
 import { ConnectionSource, Message, EMessageFromServer, EMessageFromUI, ESystemMessage, EMessageFromAgent} from '../../../core/types'
 import { useAddAgents, useUpdateAgents } from '../queries/useAgents';
-import { useAddMessage } from '../queries/useMessages';
-import { useAddTask, useAddTasks, useUpdateTask } from '../queries/useTasks';
+import { getMessagesByTaskId, useAddMessage, useAddMessages } from '../queries/useMessages';
+import { getTasksByAgentId, useAddTask, useAddTasks, useUpdateTask } from '../queries/useTasks';
 import { useAddProfiles, useUpdateActiveProfile } from '../queries/useProfiles';
+import { useQueryClient } from '@tanstack/react-query';
+import { RooCodeEventName } from '@roo-code/types';
 
 export interface WebSocketContextType {
   isConnected: boolean;
@@ -44,9 +46,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
 
+  const queryClient = useQueryClient();
+
   const addAgentsMutation = useAddAgents();
   const updateAgentsMutation = useUpdateAgents();
-  const addMessagesMutation = useAddMessage();
+  const addMessageMutation = useAddMessage();
+  const addMessagesMutation = useAddMessages();
   const updateTaskMutation = useUpdateTask();
   const addTasksMutation = useAddTasks();
   const addProfilesMutation = useAddProfiles();
@@ -94,14 +99,29 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const handleAgentMessage = useCallback((message: Message) => {
     switch (message.type) {
       case EMessageFromAgent.AgentResponse:
-        console.log("🔔 Received message from agent:", message);
-        addMessagesMutation.mutate({
-          taskId: message.event!.taskId!.toString(),
-          message: {
-            type: 'agent',
-            content: message.event!
-          }
-        });
+        switch (message.event?.eventName) {
+          case RooCodeEventName.TaskCreated:
+            getActiveTaskIds(message.agent?.id || "");
+            break;
+          case RooCodeEventName.Message:
+
+            console.log('isEmpty',!message.event?.message.text, message.event?.message.text, message.event, )
+            const isEmpty = !message.event?.message.text
+            const isPartial = message.event?.message.partial
+            if (isEmpty || isPartial) {
+              break;
+            }
+            const isUser = message.event?.message.say === 'user_feedback'
+            addMessageMutation.mutate({
+              taskId: message.event!.taskId!.toString(),
+              message: {
+                type: isUser ? 'user' : 'agent',
+                content: message.event?.message?.text
+              }
+            });
+            break;
+        }
+        
         break;
       case EMessageFromAgent.ActiveTaskIdsResponse:
         addTasksMutation.mutate({
@@ -119,7 +139,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         updateActiveProfileMutation.mutate(message.data?.activeProfile);
         break;
       case EMessageFromAgent.TaskStartedResponse:
+        console.log('TaskCreatedResponse', message)
         if (message.data?.clientTaskId && message.data?.agentTaskId) {
+          const previousMessages = queryClient.getQueryData(getMessagesByTaskId(message.data?.clientTaskId).queryKey);
+
+          addMessagesMutation.mutate({
+            taskId: message.data?.agentTaskId || "",
+            messages: previousMessages || []
+          });
+
           updateTaskMutation.mutate({
             agentId: message.agent?.id || "",
             taskId: message.data?.clientTaskId || "",
@@ -130,7 +158,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             }
           });
         } else {
-          
+          addTasksMutation.mutate({
+            agentId: message.agent?.id || "",
+            tasks: [{
+              id: message.data?.agentTaskId || "",
+              agentId: message.agent?.id || "",
+            }]
+          });
         }
         break;
 
@@ -139,7 +173,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
 
   const connect = useCallback(() => {
-    console.log('🔄 connect');
     if (connectionAttempts >= maxReconnectAttempts) {
       console.error('🚫 Достигнуто максимальное количество попыток переподключения');
       setIsConnecting(false);

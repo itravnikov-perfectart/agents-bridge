@@ -28,3 +28,20 @@ export const useAddMessage = () => {
     }
   })
 }
+
+
+type AddMessagesRequest = {
+  taskId: string;
+  messages: Message[];
+}
+
+export const useAddMessages = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (request: AddMessagesRequest) => {
+      queryClient.setQueryData(getMessagesByTaskId(request.taskId).queryKey, (old: Message[] | undefined) => [...(old || []), ...request.messages])
+      return Promise.resolve()
+    }
+  })
+}

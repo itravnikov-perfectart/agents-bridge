@@ -71,87 +71,6 @@ export class ExtensionController extends EventEmitter {
   }
 
   /**
-   * Send a message to RooCode via the appropriate adapter
-   * This opens RooCode with the message and starts a task
-   */
-  async sendToRooCode(message: string): Promise<void> {
-    if (!this.rooAdapter) {
-      logger.error(
-        `No RooCode adapter found for extension: ${this.currentConfig.defaultRooIdentifier}`,
-      );
-      return;
-    }
-
-    const taskStreams = this.rooAdapter.executeRooTasks([
-      {
-        workspacePath: this.workspacePath,
-        taskId: `task-${Date.now()}`,
-        text: message,
-        // metadata: {
-        //   source: "vscode-extension",
-        //   controllerId: this.workspacePath,
-        // },
-      },
-    ]);
-
-    for await (const taskEvents of taskStreams) {
-      try {
-        for (const event of taskEvents) {
-          logger.info(`RooCode event for message "${message}":`, JSON.stringify(event, null, 2));
-          this.sendRooCodeResponseToServer(event);
-        }
-      } catch (error) {
-        logger.error(
-          `Error processing RooCode events for message "${message}":`,
-          error,
-        );
-      }
-    }
-
-    // if (!adapter.isActive) {
-    //   logger.error(`RooCode adapter is not active for extension: ${extensionId || this.currentConfig.defaultRooIdentifier}`);
-    //   return;
-    // }
-
-    // try {
-    //   logger.info(`Opening RooCode with message (${extensionId || this.currentConfig.defaultRooIdentifier}): ${message}`);
-
-    //   // The sendMessage method opens RooCode with the text and returns an async generator
-    //   // We'll consume the generator to handle any events but don't need to wait for completion
-    //   const messageGenerator = adapter.sendMessage(message);
-
-    //   // Start consuming events in the background
-    //   this.consumeRooCodeEvents(messageGenerator, message);
-
-    //   logger.info("RooCode opened with message successfully");
-    // } catch (error) {
-    //   logger.error("Failed to open RooCode with message:", error);
-    // }
-  }
-
-  /**
-   * Consume RooCode task events in the background
-   */
-  private async consumeRooCodeEvents(
-    eventGenerator: AsyncGenerator<any, void, unknown>,
-    originalMessage: string,
-  ): Promise<void> {
-    try {
-      for await (const event of eventGenerator) {
-        logger.info(`RooCode event for message "${originalMessage}":`, event);
-        // You can add specific event handling here if needed
-        // For example, send status updates back to the WebSocket server
-      }
-      logger.info(`RooCode task completed for message: "${originalMessage}"`);
-    } catch (error) {
-      logger.error(
-        `Error processing RooCode events for message "${originalMessage}":`,
-        error,
-      );
-    }
-  }
-
-  /**
    * Initialize the controller by discovering and activating extensions
    */
   async initialize(): Promise<void> {
@@ -396,9 +315,13 @@ export class ExtensionController extends EventEmitter {
               // Send a message to an existing task in RooCode
               if (message?.data?.message) {
                 logger.info(`[DEBUG] Agent ${this.currentAgentId} forwarding to RooCode: ${message.data.message}`);
-                this.rooAdapter?.sendMessage(message.data.message, undefined, {
-                  taskId: message.data.taskId,
+
+                const taskId = message.data.taskId;
+
+                this.rooAdapter?.sendMessage(message.data.message, [], {
+                  taskId,
                 });
+                logger.info(`[DEBUG] Message sent to RooCode: ${message.data.message}`);
               } else {
                 logger.warn(
                   "RooCode message received but no message content found",
@@ -575,23 +498,12 @@ export class ExtensionController extends EventEmitter {
       }
 
       // Start new task
-      const taskGenerator = this.rooAdapter.startNewTask({
+      const taskId = await this.rooAdapter.startNewTask({
         workspacePath: this.workspacePath,
         text: message,
       });
 
-      const firstEvent = await taskGenerator.next();
-      if (!firstEvent.value?.data?.taskId) {
-        logger.info(`[ERROR] Task ID not found in the first event ${JSON.stringify(firstEvent, null, 2)}`);
-
-        throw new Error("Task ID not found in the first event");
-      }
-      const taskId = firstEvent.value.data.taskId;
-
       logger.info(`[DEBUG] Agent ${this.currentAgentId} started new task: ${taskId} with profile: ${profile}`);
-
-      // Continue consuming events in the background
-      this.consumeRooCodeEvents(taskGenerator, message);
 
       return taskId;
     } catch (error) {

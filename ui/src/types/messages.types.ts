@@ -1,5 +1,3 @@
-import { TaskEvent } from "@roo-code/types";
-
 export type MessageType = 'user' | 'agent';
 
 export type UserMessage = {
@@ -9,7 +7,7 @@ export type UserMessage = {
 
 export type AgentMessage = {
   type: 'agent';
-  content: TaskEvent;
+  content: string;
 }
 
 

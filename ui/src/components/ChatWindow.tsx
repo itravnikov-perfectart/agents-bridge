@@ -1,14 +1,13 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Send, User, Bot } from 'lucide-react';
 import { cn } from '../utils/cn';
 import { useAddMessage, useMessagesByTaskId } from '../queries/useMessages';
 import { useActiveProfile, useProfiles } from '../queries/useProfiles';
 import { useWebSocketConnection } from '../providers/connection.provider';
-import { TaskEvent } from '@roo-code/types';
-import { Message } from '../types/messages.types';
 
-import { v4 as uuidv4 } from 'uuid';
-import { useTasksByAgentId, useUpdateTask } from '../queries/useTasks';
+import { useUpdateTask } from '../queries/useTasks';
+import { RooCodeEventName } from '@roo-code/types';
+import { Message } from '../types/messages.types';
 
 interface ChatWindowProps {
   agentId: string;
@@ -66,7 +65,6 @@ export const ChatWindow = ({
       } else {
         // Новая задача - используем startNewTask
         const profile = selectedProfile || activeProfile;
-        console.log('selectedProfile and activeProfile', selectedProfile, activeProfile);
         startNewTask(agentId, taskId, messageText, profile);
         updateTaskMutation.mutate({
           agentId,
@@ -90,52 +88,69 @@ export const ChatWindow = ({
       console.error('Failed to send message:', error);
     }
   };
-/*
+
+  const handleSendMessage = (message: string) => {
+    sendMessageToTask(agentId, taskId, message);
+    addMessageMutation.mutate({
+      taskId: taskId,
+      message: {
+        type: 'user',
+        content: message
+      }
+    })
+  }
+
   const renderMessageContent = (msg: Message) => {
-    // Если это JSON ответ, пытаемся его распарсить и красиво отобразить
-    if (msg.type === 'agent' && msg.content.startsWith('{')) {
-      try {
-        const parsed = JSON.parse(msg.content);
-        
-        // Проверяем, есть ли вопрос и предложения
-        if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
-          return (
-            <div className="space-y-3">
-              <div className="font-medium">{parsed.question}</div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Варианты ответов:</div>
-                <div className="grid gap-2">
-                  {parsed.suggest.map((suggestion: any, index: number) => (
-                    <button
-                      key={index}
-                      onClick={() => onSendMessage(suggestion.answer)}
-                      className="text-left p-3 bg-accent/50 hover:bg-accent rounded-md transition-colors text-sm"
-                    >
-                      {suggestion.answer}
-                    </button>
-                  ))}
+    console.log('🔔 msg', msg);
+    if (msg.type === 'agent') {
+      if (msg.content?.startsWith('{')) {
+        try {
+          const parsed = JSON.parse(msg.content);
+          
+          // Проверяем, есть ли вопрос и предложения
+          if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
+            return (
+              <div className="space-y-3">
+                <div className="font-medium">{parsed.question}</div>
+                <div className="space-y-2">
+                  <div className="text-sm text-muted-foreground">Варианты ответов:</div>
+                  <div className="grid gap-2">
+                    {parsed.suggest.map((suggestion: any, index: number) => (
+                      <button
+                        key={index}
+                        onClick={() => handleSendMessage(suggestion.answer)}
+                        className="text-left p-3 bg-accent/50 hover:bg-accent rounded-md transition-colors text-sm"
+                      >
+                        {suggestion.answer}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
-            </div>
+            );
+          }
+  
+          // Обычный JSON ответ
+          return (
+            <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
+              {JSON.stringify(parsed, null, 2)}
+            </pre>
           );
+        } catch {
+          // Если не JSON, отображаем как обычный текст
+          return msg.content;
         }
-
-        // Обычный JSON ответ
-        return (
-          <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
-            {JSON.stringify(parsed, null, 2)}
-          </pre>
-        );
-      } catch {
-        // Если не JSON, отображаем как обычный текст
+      } else {
         return msg.content;
       }
+
+    } else {
+      return msg.content;
+
     }
 
-    return msg.content;
   };
 
-  */
 
   return (
     <div className="flex flex-col w-full h-full bg-background">
@@ -187,7 +202,7 @@ export const ChatWindow = ({
                 )}>
                   <div className="space-y-2">
                     <div className="text-sm">
-                      {JSON.stringify(msg)}
+                      {renderMessageContent(msg)}
                     </div>
                   </div>
                 </div>

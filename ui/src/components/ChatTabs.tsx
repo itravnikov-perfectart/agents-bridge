@@ -14,7 +14,7 @@ interface ChatTabsProps {
 export function ChatTabs({ 
   selectedAgent, 
 }: ChatTabsProps) {
-  const [activeTabId, setActiveTab] = useState<string | null>(null);
+  const [activeTabIndex, setActiveTabIndex] = useState<string | null>(null);
   const { getActiveTaskIds } = useWebSocketConnection();
   
   const {data: agentTasks} = useTasksByAgentId(selectedAgent);
@@ -76,17 +76,17 @@ export function ChatTabs({
   return (
     <div className="w-full h-full flex flex-col">
       <Tabs.Root 
-        value={activeTabId || undefined} 
-        onValueChange={setActiveTab}
+        value={activeTabIndex || undefined} 
+        onValueChange={setActiveTabIndex}
         className="flex flex-col h-full"
       >
         {/* Табы */}
         <div className="flex w-full items-center border-b border-border bg-background">
           <Tabs.List className="flex overflow-x-auto items-center h-12 px-4 gap-1">
-            {agentTasks?.map((task) => (
+            {agentTasks?.map((task, index) => (
               <Tabs.Trigger
                 key={task.id}
-                value={task.id}
+                value={String(index)}
                 className={cn(
                   "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md",
                   "data-[state=active]:bg-accent data-[state=active]:text-accent-foreground",
@@ -111,10 +111,10 @@ export function ChatTabs({
 
         {/* Содержимое табов */}
         <div className="w-full overflow-hidden h-full">
-          {agentTasks?.map((task) => (
+          {agentTasks?.map((task, index) => (
             <Tabs.Content
               key={task.id}
-              value={task.id}
+              value={String(index)}
               className="h-full w-full data-[state=active]:flex data-[state=inactive]:hidden"
             >
               <ChatWindow
