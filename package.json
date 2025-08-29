@@ -1,246 +1,32 @@
 {
   "name": "agents-bridge",
-  "displayName": "agents-bridge",
-  "description": "Bridge extension for integrating with RooCode AI assistant. Provides two-way communication and result execution capabilities.",
   "version": "0.0.1",
-  "engines": {
-    "vscode": "^1.103.0"
-  },
-  "categories": [
-    "AI",
-    "Chat",
-    "Data Science",
-    "Debuggers",
-    "Extension Packs",
-    "Programming Languages",
-    "Education",
-    "Snippets",
-    "Testing",
-    "Other"
+  "description": "Agents Bridge - VS Code extension, WebSocket server, and UI monorepo",
+  "private": true,
+  "workspaces": [
+    "packages/*"
   ],
-  "activationEvents": [
-    "onLanguage",
-    "onStartupFinished"
-  ],
-  "main": "./dist/extension.js",
-  "contributes": {
-    "commands": [
-      {
-        "command": "agent-maestro.getStatus",
-        "title": "Agent Bridge: Get Status",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.sendToRoo",
-        "title": "Agent Bridge: Send to RooCode",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.executeRooResult",
-        "title": "Agent Bridge: Execute RooCode Result",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.saveRooCodeSettings",
-        "title": "Agent Bridge: Save RooCode Settings",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.connectToWSServer",
-        "title": "Agent Bridge: Connect to WebSocket Server",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.refreshStatus",
-        "title": "Agent Bridge: Refresh Status",
-        "category": "Agent Bridge"
-      },
-      {
-        "command": "agent-maestro.showOutput",
-        "title": "Agent Bridge: Show Output",
-        "category": "Agent Bridge"
-      }
-    ],
-    "viewsContainers": {
-      "activitybar": [
-        {
-          "id": "agent-maestro",
-          "title": "Agent Bridge",
-          "icon": "$(server)"
-        }
-      ]
-    },
-    "views": {
-      "agent-maestro": [
-        {
-          "id": "agent-maestro.status",
-          "name": "Status",
-          "when": "true"
-        }
-      ]
-    },
-    "menus": {
-      "commandPalette": [
-        {
-          "command": "agent-maestro.getStatus",
-          "when": "true"
-        },
-        {
-          "command": "agent-maestro.sendToRoo",
-          "when": "editorTextFocus"
-        },
-        {
-          "command": "agent-maestro.executeRooResult",
-          "when": "true"
-        },
-        {
-          "command": "agent-maestro.saveRooCodeSettings",
-          "when": "true"
-        },
-        {
-          "command": "agent-maestro.connectToWSServer",
-          "when": "true"
-        },
-        {
-          "command": "agent-maestro.refreshStatus",
-          "when": "true"
-        },
-        {
-          "command": "agent-maestro.showOutput",
-          "when": "true"
-        }
-      ],
-      "editor/context": [
-        {
-          "command": "agent-maestro.sendToRoo",
-          "when": "editorTextFocus",
-          "group": "agent-maestro"
-        }
-      ],
-      "view/title": [
-        {
-          "command": "agent-maestro.getStatus",
-          "when": "view == agent-maestro.status",
-          "group": "navigation"
-        },
-        {
-          "command": "agent-maestro.connectToWSServer",
-          "when": "view == agent-maestro.status",
-          "group": "navigation"
-        }
-      ],
-      "view/item/context": [
-        {
-          "command": "agent-maestro.sendToRoo",
-          "when": "view == agent-maestro.status",
-          "group": "inline"
-        }
-      ]
-    },
-    "configuration": {
-      "title": "Agent Bridge",
-      "properties": {
-        "agentMaestro.rooCodeIntegration": {
-          "type": "boolean",
-          "default": true,
-          "description": "Enable/disable RooCode integration"
-        },
-        "agentMaestro.rooCodeIdentifier": {
-          "type": "string",
-          "default": "roo-code",
-          "description": "Extension ID of RooCode to integrate with"
-        },
-        "agentMaestro.autoExecuteResults": {
-          "type": "boolean",
-          "default": true,
-          "description": "Automatically execute results from RooCode"
-        }
-      }
-    }
-  },
   "scripts": {
-    "vscode:prepublish": "pnpm run package",
-    "compile": "pnpm run check-types && pnpm run lint && node esbuild.js",
-    "watch": "npm-run-all -p watch:*",
-    "watch:esbuild": "node esbuild.js --watch",
-    "watch:tsc": "tsc --noEmit --watch --project tsconfig.json",
-    "package": "pnpm run check-types && pnpm run lint && node esbuild.js --production",
-    "compile-tests": "tsc -p . --outDir out",
-    "watch-tests": "tsc -p . -w --outDir out",
-    "pretest": "pnpm run compile-tests && pnpm run compile && pnpm run lint",
-    "check-types": "tsc --noEmit",
-    "lint": "eslint src",
-    "test": "vscode-test",
-    "start:ui": "vite serve src/ui --port 3000",
-    "start:ws": "node -r ts-node/register src/start-ws-server.ts",
-    "stop:ws": "lsof -ti:8080 | xargs kill -9",
-    "stop:ws:port": "echo 'Usage: pnpm run stop:ws:port -- <port>' && lsof -ti:$1 | xargs kill -9",
-    "status:ws": "echo 'WebSocket server status:' && lsof -i:8080 || echo 'No WebSocket server running on port 8080'",
-    "ws:start": "./scripts/ws-server.sh start",
-    "ws:stop": "./scripts/ws-server.sh stop",
-    "ws:restart": "./scripts/ws-server.sh restart",
-    "ws:status": "./scripts/ws-server.sh status",
-    "ws:killall": "./scripts/ws-server.sh killall",
-    "ws:killvite": "./scripts/ws-server.sh killvite",
-    "kill:all": "lsof -ti:3000-3010,8080 | xargs kill -9 2>/dev/null || echo 'No servers running on ports 3000-3010 or 8080'",
-    "kill:vite": "pkill -f 'vite.*serve.*src/ui' || echo 'No Vite UI servers found'",
-    "build:ui": "cd ui && vite build",
-    "build": "pnpm run compile && pnpm run build:ui",
-    "build:extension": "pnpm run compile && pnpm run vscode:prepublish",
-    "prebuild": "pnpm install",
-    "dev": "pnpm run watch",
-    "vsix": "rm -rf ./bin && mkdir ./bin && vsce package --no-dependencies --allow-missing-repository --out ./bin",
-    "knip": "knip",
-    "type-check": "tsc --noEmit",
-    "knip:prune": "knip --fix --allow-remove-files --config knip.json",
-    "eslint:fix": "eslint --fix --cache --quiet"
+    "build": "pnpm -r run build",
+    "dev": "pnpm -r run dev",
+    "lint": "pnpm -r run lint",
+    "clean": "pnpm -r run clean",
+    "type-check": "pnpm -r run type-check",
+    "extension:build": "pnpm --filter agents-bridge-extension run build",
+    "server:dev": "pnpm --filter agents-bridge-server run dev",
+    "ui:dev": "pnpm --filter agents-bridge-ui run dev",
+    "ui:build": "pnpm --filter agents-bridge-ui run build"
   },
   "devDependencies": {
-    "@roo-code/types": "^1.40.0",
-    "@types/express": "^4.17.23",
-    "@types/jest": "^29.5.14",
-    "@types/lodash": "^4.17.20",
-    "@types/mocha": "^10.0.10",
-    "@types/node": "20.x",
-    "@types/pg": "^8.10.0",
-    "@types/react": "^18.2.0",
-    "@types/react-dom": "^18.2.0",
-    "@types/recharts": "^1.8.29",
-    "@types/uuid": "^10.0.0",
-    "@types/vscode": "^1.102.0",
-    "@types/ws": "^8.5.10",
     "@typescript-eslint/eslint-plugin": "^8.40.0",
     "@typescript-eslint/parser": "^8.40.0",
-    "@vscode/test-cli": "^0.0.11",
-    "@vscode/test-electron": "^2.5.2",
-    "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-n": "^17.21.3",
     "eslint-plugin-prettier": "^5.5.3",
-    "jest": "^29.7.0",
     "knip": "^5.63.0",
-    "npm-run-all": "^4.1.5",
     "prettier": "^3.6.2",
-    "ts-jest": "^29.4.1",
-    "ts-node": "^10.9.2",
-    "typescript": "^5.8.3",
-    "vite": "^5.2.0",
-    "vitest": "^3.2.4"
+    "typescript": "^5.8.3"
   },
-  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad",
-  "dependencies": {
-    "@anthropic-ai/sdk": "^0.57.0",
-    "@vitejs/plugin-react": "^4.2.1",
-    "bullmq": "^5.5.0",
-    "es-toolkit": "^1.39.10",
-    "express": "^4.21.2",
-    "pg": "^8.11.3",
-    "react": "^18.2.0",
-    "react-dom": "^18.2.0",
-    "recharts": "^2.15.4",
-    "uuid": "^9.0.1",
-    "ws": "^8.17.0",
-    "zod": "^3.25.76"
-  }
+  "packageManager": "pnpm@10.13.1+sha512.37ebf1a5c7a30d5fabe0c5df44ee8da4c965ca0c5af3dbab28c3a1681b70a256218d05c81c9c0dcf767ef6b8551eb5b960042b9ed4300c59242336377e01cfad"
 }

@@ -1,0 +1,33 @@
+{
+  "name": "agents-bridge-server",
+  "version": "0.0.1",
+  "description": "WebSocket server for Agents Bridge",
+  "private": true,
+  "main": "dist/standalone-ws-server.js",
+  "scripts": {
+    "build": "tsc",
+    "dev": "ts-node start-ws-server.ts",
+    "start": "node dist/standalone-ws-server.js",
+    "clean": "rm -rf dist",
+    "type-check": "tsc --noEmit",
+    "lint": "eslint . --ext .ts"
+  },
+  "dependencies": {
+    "agents-bridge-shared": "workspace:*",
+    "@roo-code/types": "^1.40.0",
+    "express": "^4.21.2",
+    "ws": "^8.17.0",
+    "zod": "^3.25.76",
+    "uuid": "^9.0.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.23",
+    "@types/ws": "^8.5.10",
+    "@types/uuid": "^10.0.0",
+    "@typescript-eslint/eslint-plugin": "^8.40.0",
+    "@typescript-eslint/parser": "^8.40.0",
+    "eslint": "^9.25.1",
+    "ts-node": "^10.9.2",
+    "typescript": "^5.8.3"
+  }
+}

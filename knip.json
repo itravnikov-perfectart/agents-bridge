@@ -1,7 +1,11 @@
 {
-  "entry": ["src/ui/index.tsx", "src/extension.ts"],
-  "project": ["src/**"],
-  "ignore": [],
-  "ignoreDependencies": [],
-  "ignoreUnresolved": []
+  "$schema": "https://unpkg.com/knip@latest/schema.json",
+  "workspaces": {
+    "packages/*": {
+      "entry": ["src/**/*.{ts,tsx}", "index.{ts,tsx}"],
+      "project": "**/*.{ts,tsx}",
+      "ignoreDependencies": ["@types/*"]
+    }
+  },
+  "ignore": ["**/dist/**", "**/node_modules/**"]
 }
