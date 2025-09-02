@@ -2,29 +2,23 @@
 import { EventEmitter } from "events";
 import * as path from "path";
 import * as vscode from "vscode";
-// Note: Using global WebSocket API available in VS Code extension host
+import { WebSocket } from "ws";
 import { Commands } from "../commands";
-import { IMessageFromAgent, IMessageFromServer, Message } from "./types";
 import {
   AgentConfiguration,
-  DEFAULT_CONFIG,
-  readConfiguration,
+  readConfiguration
 } from "../utils/config";
 import { logger } from "../utils/logger";
 import { ExtensionStatus } from "../utils/systemInfo";
 import { RooCodeAdapter } from "./RooCodeAdapter";
 import { RooCodeEventBroadcaster } from "./RooCodeEventBroadcaster";
-import { AgentStatus } from "./types";
 import {
-  ConnectionSource,
+  AgentStatus, ConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
-  EMessageFromUI,
-  EMessageToServer,
-  ERooCodeCommand,
-  ESystemMessage,
+  EMessageFromUI, ERooCodeCommand,
+  ESystemMessage, IMessageFromAgent, Message
 } from "./types";
-import { RooCodeEventName, TaskEvent } from "@roo-code/types";
 
 import { v4 as uuidv4 } from "uuid";
 
