@@ -1,34 +1,125 @@
-import { useEffect, useState } from 'react';
 import * as Tabs from '@radix-ui/react-tabs';
-import { Plus, MessageCircle} from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { MessageCircle, Plus } from 'lucide-react';
+import React, { useEffect, useState } from 'react';
+import { v4 as uuidv4 } from 'uuid';
+import { useWebSocketConnection } from '../providers/connection.provider';
+import { getMessagesByTaskId } from '../queries/useMessages';
+import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
 import { cn } from '../utils/cn';
 import { ChatWindow } from './ChatWindow';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
-import { v4 as uuidv4 } from 'uuid';
-import { getMessagesByTaskId } from '../queries/useMessages';
-import { useQueryClient } from '@tanstack/react-query';
 
 interface ChatTabsProps {
   selectedAgent: string | null;
 }
 
-export function ChatTabs({ 
-  selectedAgent, 
-}: ChatTabsProps) {
-  const [activeTabIndex, setActiveTabIndex] = useState<string | null>(null);
-  const { getActiveTaskIds } = useWebSocketConnection();
-  
+export function ChatTabs({ selectedAgent }: ChatTabsProps) {
+  const [activeTabIndex, setActiveTabIndex] = useState<string>('0');
+  const [view, setView] = useState<'active' | 'history'>('active');
+  const { getActiveTaskIds, getTaskHistory, getTaskDetails } = useWebSocketConnection();
+  const requestedTaskDetailsRef = React.useRef<Set<string>>(new Set());
+
   const queryClient = useQueryClient();
-  const {data: agentTasks} = useTasksByAgentId(selectedAgent);
+  const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const activeTasks = (agentTasks || []).filter((t: any) => !t.isCompleted);
+  const historyTasks = (agentTasks || []).filter((t: any) => !!t.isCompleted);
+  const visibleTasks = view === 'active' ? activeTasks : historyTasks;
 
   const addTaskMutation = useAddTask();
 
+  const sanitizeTitle = (raw?: string): string => {
+    if (!raw) return '';
+    let text = raw;
+    // Remove environment and task blocks
+    text = text.replace(/<environment_details[\s\S]*?<\/environment_details>/gi, '');
+    text = text.replace(/<task[\s\S]*?<\/task>/gi, '');
+    // Remove thinking/follow-up blocks
+    text = text.replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
+    text = text.replace(/<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi, '');
+    // If contains bracketed meta like [ask_followup_question ...] Result: ... → take the Result tail
+    const resultIdx = text.indexOf('Result:');
+    if (resultIdx !== -1) {
+      text = text.slice(resultIdx + 'Result:'.length);
+    }
+    // Drop any leading bracketed tag e.g., [ask_followup_question ...]
+    text = text.replace(/^\s*\[[^\]]+\]\s*/i, '');
+    // Remove any remaining tags
+    text = text.replace(/<[^>]+>/g, '');
+    // First non-empty line
+    const firstLine = text.split('\n').map((s) => s.trim()).find((s) => s.length > 0) || '';
+    return firstLine.slice(0, 80);
+  };
+
+  const pickTabLabel = (task: any, msgs: any[]): string => {
+    // First try to get title from task data (from getTaskHistory)
+    if (task?.taskData) {
+      const taskData = task.taskData;
+      // Try to extract title from task data
+      if (typeof taskData?.task === 'string' && taskData.task.trim()) return sanitizeTitle(taskData.task);
+      if (taskData?.title) return sanitizeTitle(taskData.title);
+      if (taskData?.name) return sanitizeTitle(taskData.name);
+      if (taskData?.description) return sanitizeTitle(taskData.description);
+      // Try to get first message from task data
+      if (taskData?.messages && Array.isArray(taskData.messages)) {
+        for (const m of taskData.messages) {
+          const content = typeof m?.content === 'string' ? m.content as string : '';
+          const cleaned = sanitizeTitle(content).trim();
+          if (cleaned) return cleaned;
+        }
+      }
+    }
+    
+    // Fallback to messages from query cache
+    if (!Array.isArray(msgs)) return '';
+    // Walk messages from start to find the first meaningful line
+    for (const m of msgs) {
+      const content = typeof m?.content === 'string' ? m.content as string : '';
+      const cleaned = sanitizeTitle(content).trim();
+      if (cleaned) return cleaned;
+    }
+    return '';
+  };
+
   useEffect(() => {
     if (selectedAgent) {
-      getActiveTaskIds(selectedAgent)
+      getActiveTaskIds(selectedAgent);
+      getTaskHistory(selectedAgent); // Provider handles deduplication
     }
-  }, [selectedAgent]);
+  }, [selectedAgent, getActiveTaskIds, getTaskHistory]);
+
+  // Ensure Tabs stays controlled and points to a valid index
+  useEffect(() => {
+    const taskCount = visibleTasks.length;
+    if (taskCount > 0) {
+      const currentIndex = parseInt(activeTabIndex, 10);
+      if (
+        Number.isNaN(currentIndex) ||
+        currentIndex < 0 ||
+        currentIndex >= taskCount
+      ) {
+        setActiveTabIndex('0');
+      }
+    }
+  }, [visibleTasks, activeTabIndex]);
+
+  // Request task details when tab becomes active
+  useEffect(() => {
+    if (selectedAgent && visibleTasks && visibleTasks.length > 0) {
+      const currentIndex = parseInt(activeTabIndex, 10);
+      if (!Number.isNaN(currentIndex) && currentIndex >= 0 && currentIndex < visibleTasks.length) {
+        const activeTask = visibleTasks[currentIndex];
+        if (activeTask && !requestedTaskDetailsRef.current.has(activeTask.id)) {
+          requestedTaskDetailsRef.current.add(activeTask.id);
+          getTaskDetails(selectedAgent, activeTask.id);
+        }
+      }
+    }
+  }, [selectedAgent, activeTabIndex, visibleTasks, getTaskDetails]);
+
+  // Reset current tab when switching view
+  useEffect(() => {
+    setActiveTabIndex('0');
+  }, [view]);
 
   const handleCreateNewChat = () => {
     if (selectedAgent) {
@@ -38,7 +129,7 @@ export function ChatTabs({
           id: uuidv4(),
           agentId: selectedAgent,
           isNewTask: true,
-        }
+        },
       });
     }
   };
@@ -55,7 +146,7 @@ export function ChatTabs({
     );
   }
 
-  if (agentTasks?.length === 0) {
+  if ((agentTasks?.length || 0) === 0) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
         <div className="text-center">
@@ -78,33 +169,59 @@ export function ChatTabs({
 
   return (
     <div className="w-full h-full flex flex-col">
-      <Tabs.Root 
-        value={activeTabIndex || undefined} 
+      <Tabs.Root
+        value={activeTabIndex}
         onValueChange={setActiveTabIndex}
         className="flex flex-col h-full"
       >
         {/* Табы */}
         <div className="flex w-full items-center border-b border-border bg-background">
           <Tabs.List className="flex overflow-x-auto items-center h-12 px-4 gap-1">
-            {agentTasks?.map((task, index) => {
-              const messages = queryClient.getQueryData(getMessagesByTaskId(task.id).queryKey) || [];
-              const name = messages?.[0]?.content || '';
-              return (
-              <Tabs.Trigger
-                key={task.id}
-                value={String(index)}
+            {/* Active/History toggle */}
+            <div className="flex items-center gap-1 mr-2">
+              <button
+                onClick={() => setView('active')}
                 className={cn(
-                  "inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md",
-                  "data-[state=active]:bg-accent data-[state=active]:text-accent-foreground",
-                  "hover:bg-accent/50 transition-colors group max-w-48"
+                  'px-2 py-1 text-xs rounded-md border',
+                  view === 'active' ? 'bg-accent text-accent-foreground border-transparent' : 'bg-transparent text-muted-foreground border-border'
                 )}
               >
-                 <MessageCircle className="h-4 w-4 shrink-0" />
-                <span className="truncate">{task.isNewTask ? 'New Chat' : name || task.id}</span>
-              </Tabs.Trigger>
-            )}
-            
-            )}
+                Active{activeTasks.length > 0 ? `(${activeTasks.length})` : ''} 
+              </button>
+              <button
+                onClick={() => setView('history')}
+                className={cn(
+                  'px-2 py-1 text-xs rounded-md border',
+                  view === 'history' ? 'bg-accent text-accent-foreground border-transparent' : 'bg-transparent text-muted-foreground border-border'
+                )}
+              >
+                History{historyTasks.length > 0 ? `(${historyTasks.length})` : ''}
+              </button>
+            </div>
+
+            {visibleTasks.map((task, index) => {
+              const messages =
+                queryClient.getQueryData(
+                  getMessagesByTaskId(task.id).queryKey
+                ) || [];
+              const name = pickTabLabel(task, messages as any[]);
+              return (
+                <Tabs.Trigger
+                  key={task.id}
+                  value={String(index)}
+                  className={cn(
+                    'inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md',
+                    'data-[state=active]:bg-accent data-[state=active]:text-accent-foreground',
+                    'hover:bg-accent/50 transition-colors group max-w-48'
+                  )}
+                >
+                  <MessageCircle className="h-4 w-4 shrink-0" />
+                  <span className="truncate">
+                    {task.isNewTask ? 'New Chat' : name || task.id}
+                  </span>
+                </Tabs.Trigger>
+              );
+            })}
           </Tabs.List>
 
           {/* Кнопка создания нового чата */}
@@ -119,7 +236,7 @@ export function ChatTabs({
 
         {/* Содержимое табов */}
         <div className="w-full overflow-hidden h-full">
-          {agentTasks?.map((task, index) => (
+          {visibleTasks.map((task, index) => (
             <Tabs.Content
               key={task.id}
               value={String(index)}

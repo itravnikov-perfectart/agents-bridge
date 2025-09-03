@@ -45,3 +45,30 @@ export const useAddMessages = () => {
     }
   })
 }
+
+type UpsertAgentStreamRequest = {
+  taskId: string;
+  content: string;
+}
+
+export const useUpsertAgentStreamMessage = () => {
+  const queryClient = useQueryClient();
+
+  return useMutation({
+    mutationFn: (request: UpsertAgentStreamRequest) => {
+      queryClient.setQueryData(
+        getMessagesByTaskId(request.taskId).queryKey,
+        (old: ChatMessage[] | undefined): ChatMessage[] => {
+          const messages: ChatMessage[] = old || [];
+          if (messages.length > 0 && messages[messages.length - 1]?.type === 'agent') {
+            const updated: ChatMessage[] = messages.slice();
+            updated[updated.length - 1] = { type: 'agent', content: request.content } as ChatMessage;
+            return updated;
+          }
+          return [...messages, { type: 'agent', content: request.content } as ChatMessage];
+        }
+      );
+      return Promise.resolve();
+    }
+  });
+}

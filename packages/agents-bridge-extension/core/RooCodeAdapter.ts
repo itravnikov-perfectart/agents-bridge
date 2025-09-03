@@ -112,6 +112,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         name: RooCodeEventName.TaskCreated,
         data: { taskId },
       };
+      // Track as active immediately on creation
+      this.activeTasks.add(taskId);
       this.enqueueEvent(taskId, event);
       this.onEvent?.(event);
     });
@@ -122,6 +124,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         name: RooCodeEventName.TaskStarted,
         data: { taskId },
       };
+      // Ensure task is tracked as active
+      this.activeTasks.add(taskId);
       this.enqueueEvent(taskId, event);
       this.onEvent?.(event);
     });
@@ -137,6 +141,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
           name: RooCodeEventName.TaskCompleted,
           data: { taskId, tokenUsage, toolUsage },
         };
+        // Remove from active on completion
+        this.activeTasks.delete(taskId);
         this.enqueueEvent(taskId, event);
         this.onEvent?.(event);
       },
@@ -148,6 +154,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         name: RooCodeEventName.TaskAborted,
         data: { taskId },
       };
+      // Remove from active on abort
+      this.activeTasks.delete(taskId);
       this.enqueueEvent(taskId, event);
       this.onEvent?.(event);
     });
@@ -351,6 +359,9 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
 
       // Start the task
       const taskId = await this.api.startNewTask(options);
+
+      // Track newly started task as active immediately
+      this.activeTasks.add(taskId);
 
       return taskId;
     } catch (error) {
@@ -632,7 +643,25 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    * Get active task IDs that have event streams
    */
   getActiveTaskIds(): string[] {
-    return Array.from(this.taskEventQueues.keys());
+    const ids = new Set<string>();
+
+    // Tasks we've explicitly tracked
+    for (const id of this.activeTasks) ids.add(id);
+
+    // Tasks that have pending/active event queues
+    for (const id of this.taskEventQueues.keys()) ids.add(id);
+
+    // Tasks currently in RooCode's UI stack (best-effort)
+    try {
+      if (this.api) {
+        const stack = this.api.getCurrentTaskStack?.();
+        if (Array.isArray(stack)) {
+          for (const id of stack) ids.add(id);
+        }
+      }
+    } catch {}
+
+    return Array.from(ids);
   }
 
   /**

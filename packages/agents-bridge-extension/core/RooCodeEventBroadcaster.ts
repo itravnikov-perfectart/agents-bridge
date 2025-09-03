@@ -1,9 +1,5 @@
 import { logger } from "../utils/logger";
-import { EventEmitter } from "events";
 import { RooCodeAdapter } from "./RooCodeAdapter";
-import { RooCodeEventName, TaskEvent } from "@roo-code/types";
-import { EMessageFromAgent, EMessageFromServer, IMessageFromAgent, IMessageFromServer } from "./types";
-import { ESystemMessage } from "./types";
 
 /**
  * Wrapper for RooCodeAdapter that handles raw event broadcasting
@@ -163,6 +159,13 @@ export class RooCodeEventBroadcaster {
 
   public async getTaskWithId(taskId: string): Promise<any> {
     return this.adapter.getTaskWithId(taskId);
+  }
+
+  /**
+   * Get current task stack
+   */
+  public getCurrentTaskStack(): string[] {
+    return this.adapter.getCurrentTaskStack();
   }
 
   public async clearCurrentTask(lastMessage?: string): Promise<void> {

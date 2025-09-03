@@ -202,6 +202,7 @@ const handleUIConnection = (
     case EMessageFromUI.GetActiveTaskIds:
     case EMessageFromUI.CreateTask:
     case EMessageFromUI.SendMessageToTask:
+    case EMessageFromUI.RooCodeCommand:
       const agentId = message.agent?.id;
       if (!agentId) {
         logger.warn(`Agent ID not found for RooCode message`);
@@ -235,7 +236,7 @@ const handleUIConnection = (
     //     return;
     //   }
 
-    //   const messageToCreateTask: IMessageFromServer = {
+    //   const messageToCreateTask: Message = {
     //     messageType: EMessageFromServer.CreateTask,
     //     details: {
     //       task: message.details?.task,
@@ -394,6 +395,7 @@ const handleAgentConnection = (
     case EMessageFromAgent.TaskStartedResponse:
     case EMessageFromAgent.ActiveTaskIdsResponse:
     case EMessageFromAgent.AgentResponse:
+    case EMessageFromAgent.RooCodeCommandResponse:
       // Forward RooCode response to all UI clients
       const agentResponse = agentManager.getAgent(agentId);
       if (!agentResponse) {

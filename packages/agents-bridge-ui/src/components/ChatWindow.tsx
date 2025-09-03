@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Send, User, Bot } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
 import { cn } from '../utils/cn';
@@ -24,7 +24,7 @@ export const ChatWindow = ({
   isCompleted,
 }: ChatWindowProps) => {
 
-  const { getProfiles, getActiveProfile, startNewTask, sendMessageToTask } = useWebSocketConnection();
+  const { getProfiles, getActiveProfile, startNewTask, sendMessageToTask, resumeTask, sendToolApprovalResponse } = useWebSocketConnection();
 
   const addMessageMutation = useAddMessage();
   const { data: messages = [] } = useMessagesByTaskId(taskId);
@@ -38,8 +38,47 @@ export const ChatWindow = ({
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Объединяем сообщения из чата и задачи
-  const allMessages = React.useMemo(() => {
-   return messages
+  const stripMeta = (text: string): string => {
+    return text
+      .replace(/<environment_details[\s\S]*?<\/environment_details>/gi, '')
+      .replace(/<task[\s\S]*?<\/task>/gi, '')
+      .replace(/<thinking[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi, '')
+      // Keep generic bracketed markers like "[-]", only remove explicit "[...] Result:" prefix
+      .replace(/\[[^\]]+\]\s*Result:\s*/gi, '')
+      .replace(/<[^>]+>/g, '');
+  };
+
+  const allMessages = useMemo(() => {
+    // Deduplicate messages based on content and type
+    const seen = new Set<string>();
+    const deduplicated = (messages || []).filter((m) => {
+      const text = (m as any)?.content;
+      if (typeof text !== 'string') return false;
+      
+      // Create a unique key for deduplication
+      const key = `${m.type}-${text}`;
+      if (seen.has(key)) {
+        return false; // Skip duplicate
+      }
+      seen.add(key);
+      
+      // Always keep JSON messages (tool approvals, follow-up questions)
+      if (text.startsWith('{')) {
+        try {
+          JSON.parse(text);
+          return true; // Valid JSON, keep it
+        } catch {
+          // Invalid JSON, continue with regular filtering
+        }
+      }
+      
+      // For regular messages, check if cleaned content is non-empty
+      const cleaned = stripMeta(text).trim();
+      return cleaned.length > 0;
+    });
+    
+    return deduplicated;
   }, [messages]);
 
   const scrollToBottom = () => {
@@ -51,9 +90,9 @@ export const ChatWindow = ({
   }, [allMessages]);
 
   useEffect(() => {
-    getProfiles(agentId),
-    getActiveProfile(agentId)
-  }, []);
+    getProfiles(agentId);
+    getActiveProfile(agentId);
+  }, [agentId, getProfiles, getActiveProfile]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -65,10 +104,19 @@ export const ChatWindow = ({
     try {
       if (!isNewTaskChat) {
         // Существующая задача - используем sendMessage
+        // Don't add message locally - agent will send it back via WebSocket
         sendMessageToTask(agentId, taskId, messageText);
       } else {
         // Новая задача - используем startNewTask
         const profile = selectedProfile || activeProfile;
+        // For new tasks, add the message locally since it won't be echoed back
+        addMessageMutation.mutate({
+          taskId: taskId,
+          message: {
+            type: 'user',
+            content: messageText
+          }
+        });
         startNewTask(agentId, taskId, messageText, profile);
         updateTaskMutation.mutate({
           agentId,
@@ -79,38 +127,81 @@ export const ChatWindow = ({
             isNewTask: false,
           }
         });
-        console.log('🚀 Started new task');
       }
-      addMessageMutation.mutate({
-        taskId: taskId,
-        message: {
-          type: 'user',
-          content: messageText
-        }
-      })
     } catch (error) {
       console.error('Failed to send message:', error);
     }
   };
 
   const handleSendMessage = (message: string) => {
+    // Don't add message locally - agent will send it back via WebSocket
     sendMessageToTask(agentId, taskId, message);
-    addMessageMutation.mutate({
-      taskId: taskId,
-      message: {
-        type: 'user',
-        content: message
-      }
-    })
   }
 
   const renderMessageContent = (msg: ChatMessage) => {
-    console.log('🔔 msg', msg);
     if (msg.type === 'agent') {
       if (msg.content?.startsWith('{')) {
         try {
           const parsed = JSON.parse(msg.content);
           
+          // Handle tool approval requests
+          if (parsed.type === 'tool_approval') {
+            const handleToolApproval = (approved: boolean) => {
+              sendToolApprovalResponse(agentId, taskId, approved, parsed.data);
+            };
+
+            return (
+              <div className="space-y-3">
+                <div className="font-medium text-orange-600 dark:text-orange-400">
+                  🔧 Tool Approval Required
+                </div>
+                <div className="text-sm">
+                  <strong>Tool:</strong> {parsed.tool}
+                </div>
+                {parsed.data?.todos && (
+                  <div className="text-sm">
+                    <strong>Action:</strong> {parsed.data.todos.map((todo: any) => todo.content).join(', ')}
+                  </div>
+                )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleToolApproval(true)}
+                    className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors text-sm"
+                  >
+                    ✅ Approve
+                  </button>
+                  <button
+                    onClick={() => handleToolApproval(false)}
+                    className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors text-sm"
+                  >
+                    ❌ Deny
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Render final tool result payload
+          if (parsed.type === 'tool_result') {
+            return (
+              <div className="space-y-2">
+                <div className="text-sm">
+                  <strong>Tool:</strong> {parsed.tool}
+                </div>
+                {parsed.content && (
+                  <div className="prose prose-sm dark:prose-invert max-w-none">
+                    <ReactMarkdown>{parsed.content}</ReactMarkdown>
+                  </div>
+                )}
+                {!parsed.content && (
+                  <pre className="text-xs bg-muted p-3 rounded-md overflow-x-auto">
+                    {JSON.stringify(parsed.data, null, 2)}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+
           // Проверяем, есть ли вопрос и предложения
           if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
             return (
@@ -151,19 +242,22 @@ export const ChatWindow = ({
           );
         }
       } else {
+        // Strip meta tags before rendering
+        const cleaned = stripMeta(msg.content);
         // Отображаем обычный текст как Markdown
         return (
           <div className="prose prose-sm dark:prose-invert max-w-none">
-            <ReactMarkdown>{msg.content}</ReactMarkdown>
+            <ReactMarkdown>{cleaned}</ReactMarkdown>
           </div>
         );
       }
 
     } else {
-      // Пользовательские сообщения тоже рендерим как Markdown
+      // Пользовательские сообщения тоже рендерим как Markdown (cleaned)
+      const cleaned = typeof msg.content === 'string' ? stripMeta(msg.content) : '';
       return (
         <div className="prose prose-sm dark:prose-invert max-w-none">
-          <ReactMarkdown>{msg.content}</ReactMarkdown>
+          <ReactMarkdown>{cleaned}</ReactMarkdown>
         </div>
       );
     }
@@ -195,7 +289,7 @@ export const ChatWindow = ({
                 {/* Аватар */}
                 <div className={cn(
                   "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0",
-                  msg.type === 'user' ? "bg-primary text-primary-foreground" : "bg-secondary"
+                  msg.type === 'user' ? "bg-primary/20 text-primary" : "bg-secondary"
                 )}>
                   {msg.type === 'user' ? (
                     <User className="h-4 w-4" />
@@ -207,7 +301,7 @@ export const ChatWindow = ({
                 {/* Сообщение */}
                 <div className={cn(
                   "rounded-lg p-3 max-w-full",
-                  msg.type === 'user' ? "bg-primary text-primary-foreground" : "bg-muted"
+                  msg.type === 'user' ? "bg-primary/10 text-foreground border border-primary/20" : "bg-muted text-foreground border border-border"
                 )}>
                   <div className="space-y-2">
                     <div className="text-sm">
@@ -224,7 +318,17 @@ export const ChatWindow = ({
 
 
       <div className="flex-shrink-0 p-4 border-t border-border bg-card">
-      {isCompleted && <div>Task is completed</div>}
+      {isCompleted && (
+        <div className="flex items-center gap-2 mb-2">
+          <div>Task is completed</div>
+          <button
+            onClick={() => resumeTask(agentId, taskId)}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-accent hover:bg-accent/80 rounded-md text-sm"
+          >
+            Resume Task
+          </button>
+        </div>
+      )}
       {!isCompleted &&
         (<form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 flex flex-col gap-2">
@@ -287,3 +391,5 @@ export const ChatWindow = ({
     </div>
   );
 }
+
+ 

@@ -21,6 +21,13 @@ export async function activate(context: vscode.ExtensionContext) {
     initialWorkspacePath,
   );
 
+  // Ensure controller (and RooCode adapter) is initialized before handling commands or WS
+  try {
+    await extensionController.initialize();
+  } catch (err) {
+    logger.error("Controller initialization failed:", err);
+  }
+
   // Register commands
   const disposables = [
     vscode.commands.registerCommand(Commands.GetStatus, async () => {
@@ -40,6 +47,7 @@ export async function activate(context: vscode.ExtensionContext) {
           lastHeartbeat: adapter.lastHeartbeat,
           activeTaskIds: adapter.getActiveTaskIds(),
           extensionId: adapter.getExtensionId(),
+          taskHistory: adapter.getTaskHistory(),
         };
 
         vscode.window.showInformationMessage(
@@ -49,6 +57,30 @@ export async function activate(context: vscode.ExtensionContext) {
         logger.error("Error getting status:", error);
         vscode.window.showErrorMessage(
           `Failed to get status: ${(error as Error).message}`
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand(Commands.GetAllTasks, async () => {
+      try {
+        if (!extensionController) {
+          throw new Error("Extension controller not initialized");
+        }
+
+        const adapter = extensionController.getRooAdapter();
+        if (!adapter) {
+          vscode.window.showInformationMessage("No RooCode adapter available");
+          return;
+        }
+
+        const history = adapter.getTaskHistory();
+        vscode.window.showInformationMessage(
+          `RooCode Task History: ${JSON.stringify(history, null, 2)}`
+        );
+      } catch (error) {
+        logger.error("Error getting task history:", error);
+        vscode.window.showErrorMessage(
+          `Failed to get tasks: ${(error as Error).message}`
         );
       }
     }),

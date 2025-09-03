@@ -1,5 +1,6 @@
 export enum Commands {
   GetStatus = "agent-bridge.getStatus",
+  GetAllTasks = "agent-bridge.getAllTasks",
   CreateController = "agent-bridge.createController",
   SwitchController = "agent-bridge.switchController",
   SetWorkspacePath = "agent-bridge.setWorkspacePath",

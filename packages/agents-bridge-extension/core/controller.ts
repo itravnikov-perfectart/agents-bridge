@@ -12,12 +12,13 @@ import { logger } from "../utils/logger";
 import { ExtensionStatus } from "../utils/systemInfo";
 import { RooCodeAdapter } from "./RooCodeAdapter";
 import { RooCodeEventBroadcaster } from "./RooCodeEventBroadcaster";
+import { RooCodeEventName } from "@roo-code/types";
 import {
   AgentStatus, ConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
   EMessageFromUI, ERooCodeCommand,
-  ESystemMessage, IMessageFromAgent, Message
+  ESystemMessage, Message
 } from "./types";
 
 import { v4 as uuidv4 } from "uuid";
@@ -450,13 +451,16 @@ export class ExtensionController extends EventEmitter {
 
           switch (message.type) {
             case EMessageFromServer.Ping: {
-              const pongMessage: IMessageFromAgent = {
-                messageType: EMessageFromAgent.Pong,
-                connectionType: ConnectionSource.Agent,
-                agentId: agentId,
-                details: {
+              const pongMessage: Message = {
+                type: EMessageFromAgent.Pong,
+                source: ConnectionSource.Agent,
+                agent: {
+                  id: agentId,
+                },
+                data: {
                   timestamp: message.data?.timestamp ?? Date.now(),
                 },
+                timestamp: Date.now(),
               };
               this.ws?.send(JSON.stringify(pongMessage));
               break;
@@ -505,45 +509,63 @@ export class ExtensionController extends EventEmitter {
               }
               break;
 
+            case EMessageFromUI.RooCodeCommand:
+              logger.info(
+                `[DEBUG] Agent ${this.currentAgentId} processing RooCode command from UI: ${messageData}`,
+              );
+              if (message.data?.command) {
+                const { command, parameters, extensionId } = message.data;
+                await this.handleRooCodeCommand(
+                  command,
+                  parameters,
+                  extensionId,
+                );
+              } else {
+                logger.warn(
+                  "RooCode UI command received but no command found in details",
+                );
+              }
+              break;
+
             case EMessageFromUI.GetActiveTaskIds: {
               try {
                 const adapter = this.getRooAdapter();
                 if (adapter?.isActive) {
-                  const activeTaskIds = adapter.getActiveTaskIds() ?? [];
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ActiveTaskIdsResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      activeTaskIds,
-                      timestamp: Date.now(),
-                    },
+                  // Prefer live event queues; fall back to RooCode's current task stack
+                  const eventQueueIds = adapter.getActiveTaskIds() ?? [];
+                  let stackIds: string[] = [];
+                  try {
+                    stackIds = adapter.getCurrentTaskStack() ?? [];
+                  } catch {}
+                  const activeTaskIds = Array.from(new Set([...(eventQueueIds || []), ...(stackIds || [])]));
+                  const response: Message = {
+                    type: EMessageFromAgent.ActiveTaskIdsResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { activeTaskIds },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 } else {
                   // Send empty response if adapter not ready
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ActiveTaskIdsResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      activeTaskIds: [],
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.ActiveTaskIdsResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { activeTaskIds: [] },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 }
               } catch (err) {
                 logger.warn("Failed to get active task ids:", err);
                 // Send empty response on error
-                const response: IMessageFromAgent = {
-                  messageType: EMessageFromAgent.ActiveTaskIdsResponse,
-                  connectionType: ConnectionSource.Agent,
-                  agentId: agentId,
-                  details: {
-                    activeTaskIds: [],
-                    timestamp: Date.now(),
-                  },
+                const response: Message = {
+                  type: EMessageFromAgent.ActiveTaskIdsResponse,
+                  source: ConnectionSource.Agent,
+                  agent: { id: agentId },
+                  data: { activeTaskIds: [] },
+                  timestamp: Date.now(),
                 };
                 this.ws?.send(JSON.stringify(response));
               }
@@ -555,40 +577,34 @@ export class ExtensionController extends EventEmitter {
                 const adapter = this.getRooAdapter();
                 if (adapter?.isActive) {
                   const profiles = adapter.getProfiles() ?? [];
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ProfilesResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      profiles,
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.ProfilesResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { profiles },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 } else {
                   // Send empty response if adapter not ready
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ProfilesResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      profiles: [],
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.ProfilesResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { profiles: [] },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 }
               } catch (err) {
                 logger.warn("Failed to get profiles:", err);
                 // Send empty response on error
-                const response: IMessageFromAgent = {
-                  messageType: EMessageFromAgent.ProfilesResponse,
-                  connectionType: ConnectionSource.Agent,
-                  agentId: agentId,
-                  details: {
-                    profiles: [],
-                    timestamp: Date.now(),
-                  },
+                const response: Message = {
+                  type: EMessageFromAgent.ProfilesResponse,
+                  source: ConnectionSource.Agent,
+                  agent: { id: agentId },
+                  data: { profiles: [] },
+                  timestamp: Date.now(),
                 };
                 this.ws?.send(JSON.stringify(response));
               }
@@ -600,40 +616,34 @@ export class ExtensionController extends EventEmitter {
                 const adapter = this.getRooAdapter();
                 if (adapter?.isActive) {
                   const activeProfile = adapter.getActiveProfile();
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ActiveProfileResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      activeProfile,
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.ActiveProfileResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { activeProfile },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 } else {
                   // Send empty response if adapter not ready
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.ActiveProfileResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      activeProfile: undefined,
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.ActiveProfileResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { activeProfile: undefined },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 }
               } catch (err) {
                 logger.warn("Failed to get active profile:", err);
                 // Send empty response on error
-                const response: IMessageFromAgent = {
-                  messageType: EMessageFromAgent.ActiveProfileResponse,
-                  connectionType: ConnectionSource.Agent,
-                  agentId: agentId,
-                  details: {
-                    activeProfile: undefined,
-                    timestamp: Date.now(),
-                  },
+                const response: Message = {
+                  type: EMessageFromAgent.ActiveProfileResponse,
+                  source: ConnectionSource.Agent,
+                  agent: { id: agentId },
+                  data: { activeProfile: undefined },
+                  timestamp: Date.now(),
                 };
                 this.ws?.send(JSON.stringify(response));
               }
@@ -643,44 +653,72 @@ export class ExtensionController extends EventEmitter {
             case EMessageFromUI.CreateTask: {
               try {
                 const text = message.data?.message ?? "";
-                if (text && this.rooAdapter?.isActive) {
-                  await this.sendToRooCode(text);
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.TaskStartedResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      message: text,
+                const clientTaskId = message.data?.taskId as string | undefined;
+                const profile = message.data?.profile as string | undefined;
+                const adapter = this.getRooAdapter();
+                if (text && adapter) {
+                  // Ensure adapter is initialized and ready
+                  if (!adapter.isActive) {
+                    logger.info("Adapter not active, initializing before starting task");
+                    await adapter.initialize();
+                  }
+
+                  // Wait for RooCode API readiness with timeout
+                  const waitStart = Date.now();
+                  const waitTimeoutMs = 5000;
+                  while (Date.now() - waitStart < waitTimeoutMs) {
+                    try {
+                      if (adapter.isReady()) break;
+                    } catch {}
+                    await new Promise((r) => setTimeout(r, 200));
+                  }
+
+                  if (!adapter.isReady()) {
+                    const response: Message = {
+                      type: EMessageFromAgent.TaskStartedResponse,
+                      source: ConnectionSource.Agent,
+                      agent: { id: agentId },
+                      data: { error: "RooCode API not ready", clientTaskId, message: text },
                       timestamp: Date.now(),
-                    },
+                    };
+                    this.ws?.send(JSON.stringify(response));
+                    break;
+                  }
+
+                  const agentTaskId = await adapter.startNewTask({
+                    workspacePath: this.workspacePath,
+                    text,
+                    ...(profile ? { profile } : {}),
+                  });
+
+                  const response: Message = {
+                    type: EMessageFromAgent.TaskStartedResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { clientTaskId, agentTaskId, message: text },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 } else {
                   // Send error response if adapter not ready
-                  const response: IMessageFromAgent = {
-                    messageType: EMessageFromAgent.TaskStartedResponse,
-                    connectionType: ConnectionSource.Agent,
-                    agentId: agentId,
-                    details: {
-                      error: "RooCode adapter not ready",
-                      message: text,
-                      timestamp: Date.now(),
-                    },
+                  const response: Message = {
+                    type: EMessageFromAgent.TaskStartedResponse,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { error: "RooCode adapter not found or empty message", clientTaskId, message: text },
+                    timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
                 }
               } catch (err) {
                 logger.warn("Failed to start task from UI message:", err);
                 // Send error response
-                const response: IMessageFromAgent = {
-                  messageType: EMessageFromAgent.TaskStartedResponse,
-                  connectionType: ConnectionSource.Agent,
-                  agentId: agentId,
-                  details: {
-                    error: err instanceof Error ? err.message : "Unknown error",
-                    message: message.data?.message ?? "",
-                    timestamp: Date.now(),
-                  },
+                const response: Message = {
+                  type: EMessageFromAgent.TaskStartedResponse,
+                  source: ConnectionSource.Agent,
+                  agent: { id: agentId },
+                  data: { error: err instanceof Error ? err.message : "Unknown error", clientTaskId: message.data?.taskId, message: message.data?.message ?? "" },
+                  timestamp: Date.now(),
                 };
                 this.ws?.send(JSON.stringify(response));
               }
@@ -692,6 +730,41 @@ export class ExtensionController extends EventEmitter {
                 `Received unregistered message from WebSocket server: ${messageData}`,
               );
               break;
+
+            case EMessageFromUI.SendMessageToTask: {
+              try {
+                const taskId = message.data?.taskId as string;
+                const messageText = message.data?.message as string;
+                const adapter = this.getRooAdapter();
+                
+                if (taskId && messageText && adapter?.isActive) {
+                  logger.info(`Sending message to task ${taskId}: ${messageText}`);
+                  
+                  // First resume the task to make it current, then send the message
+                  await adapter.resumeTask(taskId);
+                  
+                  // Wait a bit for the task to be resumed
+                  await new Promise(resolve => setTimeout(resolve, 500));
+                  
+                  // Now send the message to the current (resumed) task
+                  const messageStream = adapter.sendMessage(messageText);
+                  
+                  // Process the message stream
+                  for await (const event of messageStream) {
+                    // Events will be handled by the existing event listeners
+                    logger.debug(`Message stream event: ${event.eventName}`);
+                  }
+                  
+                  logger.info(`Message sent to task ${taskId} successfully`);
+                } else {
+                  logger.warn(`Cannot send message to task: taskId=${taskId}, message=${messageText}, adapterActive=${adapter?.isActive}`);
+                }
+              } catch (error) {
+                logger.error(`Error sending message to task: ${error}`);
+              }
+              break;
+            }
+
             default:
               logger.info(
                 `Received message from WebSocket server: ${messageData} which is not handled`,
@@ -734,23 +807,69 @@ export class ExtensionController extends EventEmitter {
       return; // Silently return if not connected
     }
 
-    // Create message with the raw event structure
-    const eventMessage: IMessageFromAgent = {
-      messageType: EMessageFromAgent.RooCodeEvent,
-      connectionType: ConnectionSource.Agent,
-      agentId: this.currentAgentId || "unknown-agent",
-      details: {
-        eventName: eventName,
-        eventData: args,
-        extensionId,
-        timestamp: Date.now(),
-      },
-    };
+    // Map important RooCode events to AgentResponse for UI consumption
+    try {
+      if (eventName === RooCodeEventName.Message) {
+        const data = args?.[0] || {};
+        const agentResponse: Message = {
+          type: EMessageFromAgent.AgentResponse,
+          source: ConnectionSource.Agent,
+          agent: { id: this.currentAgentId || "unknown-agent" },
+          event: {
+            eventName: RooCodeEventName.Message,
+            taskId: data.taskId,
+            message: data.message,
+          } as any,
+          timestamp: Date.now(),
+        };
+        this.ws.send(JSON.stringify(agentResponse));
+        return;
+      }
 
-    logger.info(
-      `Broadcasting raw RooCode event [${eventName}] to server [ext=${extensionId}]: ${JSON.stringify(args)}`,
-    );
-    this.ws.send(JSON.stringify(eventMessage));
+      if (eventName === RooCodeEventName.TaskCreated) {
+        const taskId = args?.[0];
+        const agentResponse: Message = {
+          type: EMessageFromAgent.AgentResponse,
+          source: ConnectionSource.Agent,
+          agent: { id: this.currentAgentId || "unknown-agent" },
+          event: {
+            eventName: RooCodeEventName.TaskCreated,
+            taskId,
+          } as any,
+          timestamp: Date.now(),
+        };
+        this.ws.send(JSON.stringify(agentResponse));
+        return;
+      }
+
+      if (eventName === RooCodeEventName.TaskAborted) {
+        const taskId = args?.[0];
+        const agentResponse: Message = {
+          type: EMessageFromAgent.AgentResponse,
+          source: ConnectionSource.Agent,
+          agent: { id: this.currentAgentId || "unknown-agent" },
+          event: {
+            eventName: RooCodeEventName.TaskAborted,
+            taskId,
+          } as any,
+          timestamp: Date.now(),
+        };
+        this.ws.send(JSON.stringify(agentResponse));
+        return;
+      }
+
+      // Fallback: send generic RooCodeEvent
+      const eventMessage: Message = {
+        type: EMessageFromAgent.RooCodeEvent,
+        source: ConnectionSource.Agent,
+        agent: { id: this.currentAgentId || "unknown-agent" },
+        data: { eventName, eventData: args, extensionId },
+        timestamp: Date.now(),
+      };
+      this.ws.send(JSON.stringify(eventMessage));
+    } catch (err) {
+      logger.warn("Failed to serialize/broadcast RooCode raw event", err);
+    }
   }
 
   /**
@@ -762,15 +881,12 @@ export class ExtensionController extends EventEmitter {
     }
 
     // Create message with the full event structure
-    const eventMessage: IMessageFromAgent = {
-      messageType: EMessageFromAgent.RooCodeEvent,
-      connectionType: ConnectionSource.Agent,
-      agentId: this.currentAgentId || "unknown-agent",
-      details: {
-        event: event, // Full event structure
-        extensionId,
-        timestamp: Date.now(),
-      },
+    const eventMessage: Message = {
+      type: EMessageFromAgent.RooCodeEvent,
+      source: ConnectionSource.Agent,
+      agent: { id: this.currentAgentId || "unknown-agent" },
+      data: { event, extensionId },
+      timestamp: Date.now(),
     };
 
     logger.info(
@@ -792,17 +908,12 @@ export class ExtensionController extends EventEmitter {
       return;
     }
 
-    const responseMessage: IMessageFromAgent = {
-      messageType: EMessageFromAgent.RooCodeResponse,
-      connectionType: ConnectionSource.Agent,
-      agentId: this.currentAgentId || "unknown-agent",
-      details: {
-        response,
-        partial,
-        extensionId,
-        workspacePath: this.workspacePath,
-        timestamp: Date.now(),
-      },
+    const responseMessage: Message = {
+      type: EMessageFromAgent.RooCodeResponse,
+      source: ConnectionSource.Agent,
+      agent: { id: this.currentAgentId || "unknown-agent", workspacePath: this.workspacePath },
+      data: { response, partial, extensionId },
+      timestamp: Date.now(),
     };
 
     logger.info(
@@ -1021,18 +1132,12 @@ export class ExtensionController extends EventEmitter {
       return;
     }
 
-    const responseMessage: IMessageFromAgent = {
-      messageType: EMessageFromAgent.RooCodeCommandResponse,
-      connectionType: ConnectionSource.Agent,
-      agentId: this.currentAgentId || "unknown-agent",
-      details: {
-        command,
-        success,
-        error,
-        result,
-        extensionId,
-        timestamp: Date.now(),
-      },
+    const responseMessage: Message = {
+      type: EMessageFromAgent.RooCodeCommandResponse,
+      source: ConnectionSource.Agent,
+      agent: { id: this.currentAgentId || "unknown-agent" },
+      data: { command, success, error, result, extensionId },
+      timestamp: Date.now(),
     };
 
     logger.info(
@@ -1058,17 +1163,12 @@ export class ExtensionController extends EventEmitter {
         return; // Silently return if not connected
       }
 
-      const statusMessage: IMessageFromAgent = {
-        messageType: EMessageFromAgent.RooCodeStatus,
-        connectionType: ConnectionSource.Agent,
-        agentId: this.currentAgentId || "unknown-agent",
-        details: {
-          extensionId: adapter.getExtensionId(),
-          isReady: adapter.isReady(),
-          lastHeartbeat: adapter.lastHeartbeat,
-          activeTaskIds: adapter.getActiveTaskIds(),
-          timestamp: Date.now(),
-        },
+      const statusMessage: Message = {
+        type: EMessageFromAgent.RooCodeStatus,
+        source: ConnectionSource.Agent,
+        agent: { id: this.currentAgentId || "unknown-agent" },
+        data: { extensionId: adapter.getExtensionId(), isReady: adapter.isReady(), lastHeartbeat: adapter.lastHeartbeat, activeTaskIds: adapter.getActiveTaskIds() },
+        timestamp: Date.now(),
       };
 
       this.ws.send(JSON.stringify(statusMessage));
@@ -1094,15 +1194,12 @@ export class ExtensionController extends EventEmitter {
         return; // Silently return if not connected
       }
 
-      const configMessage: IMessageFromAgent = {
-        messageType: EMessageFromAgent.RooCodeConfiguration,
-        connectionType: ConnectionSource.Agent,
-        agentId: this.currentAgentId || "unknown-agent",
-        details: {
-          extensionId: adapter.getExtensionId(),
-          configuration: adapter.getConfiguration(),
-          timestamp: Date.now(),
-        },
+      const configMessage: Message = {
+        type: EMessageFromAgent.RooCodeConfiguration,
+        source: ConnectionSource.Agent,
+        agent: { id: this.currentAgentId || "unknown-agent" },
+        data: { extensionId: adapter.getExtensionId(), configuration: adapter.getConfiguration() },
+        timestamp: Date.now(),
       };
 
       this.ws.send(JSON.stringify(configMessage));
@@ -1128,16 +1225,12 @@ export class ExtensionController extends EventEmitter {
         return; // Silently return if not connected
       }
 
-      const profilesMessage: IMessageFromAgent = {
-        messageType: EMessageFromAgent.RooCodeProfiles,
-        connectionType: ConnectionSource.Agent,
-        agentId: this.currentAgentId || "unknown-agent",
-        details: {
-          extensionId: adapter.getExtensionId(),
-          profiles: adapter.getProfiles(),
-          activeProfile: adapter.getActiveProfile(),
-          timestamp: Date.now(),
-        },
+      const profilesMessage: Message = {
+        type: EMessageFromAgent.RooCodeProfiles,
+        source: ConnectionSource.Agent,
+        agent: { id: this.currentAgentId || "unknown-agent" },
+        data: { extensionId: adapter.getExtensionId(), profiles: adapter.getProfiles(), activeProfile: adapter.getActiveProfile() },
+        timestamp: Date.now(),
       };
 
       this.ws.send(JSON.stringify(profilesMessage));
@@ -1163,15 +1256,12 @@ export class ExtensionController extends EventEmitter {
         return; // Silently return if not connected
       }
 
-      const historyMessage: IMessageFromAgent = {
-        messageType: EMessageFromAgent.RooCodeTaskHistory,
-        connectionType: ConnectionSource.Agent,
-        agentId: this.currentAgentId || "unknown-agent",
-        details: {
-          extensionId: adapter.getExtensionId(),
-          taskHistory: adapter.getTaskHistory(),
-          timestamp: Date.now(),
-        },
+      const historyMessage: Message = {
+        type: EMessageFromAgent.RooCodeTaskHistory,
+        source: ConnectionSource.Agent,
+        agent: { id: this.currentAgentId || "unknown-agent" },
+        data: { extensionId: adapter.getExtensionId(), taskHistory: adapter.getTaskHistory() },
+        timestamp: Date.now(),
       };
 
       this.ws.send(JSON.stringify(historyMessage));
