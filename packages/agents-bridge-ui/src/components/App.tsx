@@ -5,19 +5,18 @@ import { Settings } from './Settings';
 import { useState, useEffect } from 'react';
 import { useWebSocketConnection } from '../providers/connection.provider';
 import { useTasksByAgentId } from '../queries/useTasks';
-import { useAgents } from '../queries/useAgents';
 
 export function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
-  
+
   const { onTaskIdChange } = useWebSocketConnection();
-  
-  const { isConnecting, isConnected, connectionAttempts } = useWebSocketConnection();
+
+  const { isConnecting, isConnected, connectionAttempts } =
+    useWebSocketConnection();
   const { data: agentTasks } = useTasksByAgentId(selectedAgent);
-  const { data: agents = [] } = useAgents();
-  
+
   // Listen for task ID changes (when new tasks are created)
   useEffect(() => {
     const unsubscribe = onTaskIdChange((oldTaskId, newTaskId) => {
@@ -25,27 +24,10 @@ export function App() {
         setSelectedTaskId(newTaskId);
       }
     });
-    
+
     return unsubscribe;
   }, [onTaskIdChange, selectedTaskId]);
 
-  // Debug WebSocket connection
-  useEffect(() => {
-    console.log('🔌 WebSocket Status:', { isConnected, isConnecting, connectionAttempts });
-  }, [isConnected, isConnecting, connectionAttempts]);
-
-  // Reset selectedAgent if the agent was removed
-  useEffect(() => {
-    if (selectedAgent && agents.length > 0) {
-      const agentExists = agents.some(agent => agent.id === selectedAgent);
-      if (!agentExists) {
-        console.log(`🗑️ Selected agent ${selectedAgent} was removed, resetting selection`);
-        setSelectedAgent(null);
-        setSelectedTaskId(null);
-      }
-    }
-  }, [selectedAgent, agents]);
-  
   // Get task completion status
   const selectedTask = agentTasks?.find((t: any) => t.id === selectedTaskId);
   const isTaskCompleted = selectedTask?.isCompleted || false;
@@ -79,7 +61,7 @@ export function App() {
         onSelectAgent={setSelectedAgent}
         onOpenSettings={() => setIsSettingsOpen(true)}
       />
-      
+
       {/* Column 2: Chat List */}
       <div className="w-80 border-r border-border">
         <ChatList
@@ -88,7 +70,7 @@ export function App() {
           onSelectTask={setSelectedTaskId}
         />
       </div>
-      
+
       {/* Column 3: Chat Window */}
       <div className="flex-1 min-w-0">
         {selectedAgent && selectedTaskId ? (
@@ -109,7 +91,7 @@ export function App() {
           </div>
         )}
       </div>
-      
+
       <Settings
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}

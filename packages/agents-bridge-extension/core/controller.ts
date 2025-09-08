@@ -45,17 +45,20 @@ export class ExtensionController extends EventEmitter {
   private reconnectAttempts = 0;
   private maxReconnectAttempts = 5;
   private reconnectTimeout?: NodeJS.Timeout;
+  // Track subtask relationships to better route messages
+  private taskParentMap: Map<string, string> = new Map(); // childId -> parentId
+  private parentToActiveChild: Map<string, string> = new Map(); // parentId -> active childId until unpaused
 
   constructor(workspacePath?: string) {
     super();
     this.workspacePath = workspacePath || '';
-    
+
     // Use agentId from VS Code settings (set by Docker container), fallback to environment, then UUID
     const configuredAgentId = this.currentConfig.agentId;
     this.currentAgentId = configuredAgentId || process.env.AGENT_ID || uuidv4();
-    
+
     this.initializeRooAdapters(this.currentConfig);
-    
+
     logger.info(`ExtensionController initialized with agentId: ${this.currentAgentId} (from ${configuredAgentId ? 'config' : process.env.AGENT_ID ? 'env' : 'generated'})`);
 
     // No periodic broadcasts - events are broadcast immediately when they occur
@@ -66,7 +69,9 @@ export class ExtensionController extends EventEmitter {
    */
   private initializeRooAdapter(config: AgentConfiguration): void {
     // Check and create adapter for default RooCode extension
-    logger.info(`[DEBUG] Initializing RooCode adapter with ID: "${config.defaultRooIdentifier}"`);
+    logger.info(
+      `[DEBUG] Initializing RooCode adapter with ID: "${config.defaultRooIdentifier}"`
+    );
     if (this.isExtensionInstalled(config.defaultRooIdentifier)) {
       const defaultAdapter = new RooCodeAdapter(config.defaultRooIdentifier);
       const defaultWrapper = new RooCodeEventBroadcaster(defaultAdapter);
@@ -87,7 +92,9 @@ export class ExtensionController extends EventEmitter {
       logger.info(
         `Added RooCode adapter wrapper for: ${config.defaultRooIdentifier}`
       );
-      logger.info(`[DEBUG] Adapter stored with key: "${config.defaultRooIdentifier}"`);
+      logger.info(
+        `[DEBUG] Adapter stored with key: "${config.defaultRooIdentifier}"`
+      );
     } else {
       logger.warn(`Extension not found: ${config.defaultRooIdentifier}`);
     }
@@ -647,10 +654,13 @@ export class ExtensionController extends EventEmitter {
                 const text = message.data?.message ?? '';
                 const clientTaskId = message.data?.taskId as string | undefined;
                 const profile = message.data?.profile as string | undefined;
+                const initialMode = message.data?.mode as string | undefined;
                 const adapter = this.getRooAdapter();
 
-                logger.info(`Processing CreateTask message: text="${text}", clientTaskId="${clientTaskId}", profile="${profile}"`);
-                logger.info('Adapter', adapter?.isActive, adapter?.isReady());
+                logger.info(
+                  `Processing CreateTask message: text="${text}", clientTaskId="${clientTaskId}", profile="${profile} ", initialMode="${initialMode}"`
+                );
+
                 if (text && adapter) {
                   // Ensure adapter is initialized and ready
                   if (!adapter.isActive) {
@@ -676,7 +686,6 @@ export class ExtensionController extends EventEmitter {
                     await new Promise((r) => setTimeout(r, 200));
                   }
 
-                  logger.info('Adapter', adapter?.isActive, adapter?.isReady());
 
                   if (!adapter.isReady()) {
                     logger.info('RooCode API not ready after 10 seconds');
@@ -705,22 +714,33 @@ export class ExtensionController extends EventEmitter {
                     const taskGenerator = adapter.startNewTask({
                       workspacePath: this.workspacePath,
                       text,
-                      configuration: createAutoApprovalTaskConfig(),
+                      configuration: createAutoApprovalTaskConfig({
+                        mode: initialMode,
+                      }),
                       ...(profile ? { profile } : {}),
                     });
 
                     // Consume the first event to get the taskId from TaskCreated event
                     const firstEvent = await taskGenerator.next();
 
-                    if (firstEvent.value && firstEvent.value.name === RooCodeEventName.TaskCreated) {
+                    if (
+                      firstEvent.value &&
+                      firstEvent.value.name === RooCodeEventName.TaskCreated
+                    ) {
                       agentTaskId = firstEvent.value.data?.taskId;
                       logger.info(`Task created with ID: ${agentTaskId}`);
                     } else {
-                      logger.warn(`First event was not TaskCreated:`, firstEvent.value);
+                      logger.warn(
+                        `First event was not TaskCreated:`,
+                        firstEvent.value
+                      );
                     }
 
                     // Continue consuming events in the background
-                    this.consumeTaskEvents(taskGenerator, agentTaskId || 'unknown');
+                    this.consumeTaskEvents(
+                      taskGenerator,
+                      agentTaskId || 'unknown'
+                    );
                   } catch (error) {
                     logger.error('Failed to start new task:', error);
                   }
@@ -733,9 +753,21 @@ export class ExtensionController extends EventEmitter {
                     timestamp: Date.now(),
                   };
                   this.ws?.send(JSON.stringify(response));
+
+                  // If UI provided desired initial mode, send a mode switch request
+                  if (agentTaskId && initialMode) {
+                    try {
+                      const initialSlug = this.mapModeSlug(initialMode);
+                      await (adapter as any).api?.setMode(initialSlug);
+                    } catch (err) {
+                      logger.warn('Failed to apply initial mode:', err);
+                    }
+                  }
                 } else {
                   // Send error response if adapter not ready
-                  logger.warn(`[DEBUG] Task creation failed - text="${text}", adapter=${!!adapter}`);
+                  logger.warn(
+                    `[DEBUG] Task creation failed - text="${text}", adapter=${!!adapter}`
+                  );
                   const response: Message = {
                     type: EMessageFromAgent.TaskStartedResponse,
                     source: ConnectionSource.Agent,
@@ -871,14 +903,14 @@ export class ExtensionController extends EventEmitter {
             case EMessageFromUI.CloneRepo: {
               try {
                 logger.info(`[DEBUG] Agent ${this.currentAgentId} processing CloneRepo command from UI`);
-                
+
                 const { repoUrl, gitToken } = message.data || {};
                 if (!repoUrl) {
                   throw new Error('Repository URL is required');
                 }
 
                 await this.cloneRepository(repoUrl, gitToken);
-                
+
                 // Send success response
                 const response: Message = {
                   source: ConnectionSource.Agent,
@@ -888,18 +920,18 @@ export class ExtensionController extends EventEmitter {
                   timestamp: Date.now(),
                 };
                 this.ws?.send(JSON.stringify(response));
-                
+
               } catch (error) {
                 logger.error(`Error cloning repository: ${error}`);
-                
+
                 // Send error response
                 const errorResponse: Message = {
                   source: ConnectionSource.Agent,
                   type: EMessageFromServer.RepoCloneError,
                   agent: { id: this.currentAgentId },
-                  data: { 
+                  data: {
                     error: error instanceof Error ? error.message : 'Unknown error',
-                    repoUrl: message.data?.repoUrl 
+                    repoUrl: message.data?.repoUrl
                   },
                   timestamp: Date.now(),
                 };
@@ -907,7 +939,7 @@ export class ExtensionController extends EventEmitter {
               }
               break;
             }
-            
+
             default:
               logger.info(
                 `Received message from WebSocket server: ${messageData} which is not handled`
@@ -950,7 +982,9 @@ export class ExtensionController extends EventEmitter {
     const delay = Math.min(1000 * Math.pow(2, this.reconnectAttempts), 30000); // Exponential backoff, max 30s
     this.reconnectAttempts++;
 
-    logger.info(`Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`);
+    logger.info(
+      `Scheduling reconnection attempt ${this.reconnectAttempts}/${this.maxReconnectAttempts} in ${delay}ms`
+    );
 
     this.reconnectTimeout = setTimeout(() => {
       logger.info(`Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
@@ -969,6 +1003,14 @@ export class ExtensionController extends EventEmitter {
     }
   }
 
+  /** Map UI mode names to Roo mode slugs */
+  private mapModeSlug(mode?: string): string | undefined {
+    if (!mode) return undefined;
+    const normalized = String(mode).toLowerCase();
+    if (normalized === 'orchestrator') return 'architect';
+    return normalized;
+  }
+
   /**
    * Clone a Git repository and open it as workspace
    */
@@ -976,11 +1018,11 @@ export class ExtensionController extends EventEmitter {
     try {
       // Extract repository name from URL for folder naming
       const repoName = this.extractRepoName(repoUrl);
-      
+
       // Create target directory path
       let targetPath: string;
       const existingWorkspace = vscode.workspace.workspaceFolders?.[0];
-      
+
       if (existingWorkspace) {
         // If workspace is open, clone into it
         targetPath = existingWorkspace.uri.fsPath;
@@ -990,17 +1032,17 @@ export class ExtensionController extends EventEmitter {
         const homeDir = os.homedir();
         const projectsDir = path.join(homeDir, 'Projects');
         targetPath = path.join(projectsDir, repoName);
-        
+
         // Create the projects directory if it doesn't exist
         if (!fs.existsSync(projectsDir)) {
           fs.mkdirSync(projectsDir, { recursive: true });
         }
-        
+
         // Create the target directory
         if (!fs.existsSync(targetPath)) {
           fs.mkdirSync(targetPath, { recursive: true });
         }
-        
+
         logger.info(`Created new directory for repository: ${targetPath}`);
       }
 
@@ -1024,7 +1066,7 @@ export class ExtensionController extends EventEmitter {
 
       // Show terminal and execute clone command
       terminal.show();
-      
+
       if (existingWorkspace) {
         // Clone into existing workspace (current directory)
         terminal.sendText(`git clone ${cloneUrl} .`, true);
@@ -1044,13 +1086,13 @@ export class ExtensionController extends EventEmitter {
       }
 
       logger.info(`Repository ${repoUrl} cloned successfully`);
-      
+
       // Show success message to user
-      const message = existingWorkspace 
+      const message = existingWorkspace
         ? `Repository cloned successfully into current workspace`
         : `Repository cloned and opened as new workspace: ${repoName}`;
       vscode.window.showInformationMessage(message);
-      
+
     } catch (error) {
       logger.error(`Failed to clone repository: ${error}`);
       throw error;
@@ -1089,19 +1131,44 @@ export class ExtensionController extends EventEmitter {
 
     // Map important RooCode events to AgentResponse for UI consumption
     try {
+      // Console log for debugging Roo events
+      // eslint-disable-next-line no-console
+      console.log('[RooEvent]', eventName, {
+        args,
+        extensionId,
+        agentId: this.currentAgentId,
+      });
+
       if (eventName === RooCodeEventName.Message) {
         const data = args?.[0] || {};
+        let taskId = data.taskId;
+        let parentTaskId: string | undefined = undefined;
+
+        // If this message is for a parent that currently has an active child, route to the child
+        if (taskId && this.parentToActiveChild.has(taskId)) {
+          const childId = this.parentToActiveChild.get(taskId)!;
+          parentTaskId = taskId;
+          taskId = childId;
+        } else if (typeof taskId === 'string' && this.taskParentMap.has(taskId)) {
+          // Or attach known parent if message already belongs to a child
+          parentTaskId = this.taskParentMap.get(taskId);
+        }
         const agentResponse: Message = {
           type: EMessageFromAgent.AgentResponse,
           source: ConnectionSource.Agent,
           agent: { id: this.currentAgentId || 'unknown-agent' },
           event: {
             eventName: RooCodeEventName.Message,
-            taskId: data.taskId,
+            taskId,
+            ...(parentTaskId ? { parentTaskId } : {}),
+            ...(parentTaskId ? { isSubtask: true } : {}),
             message: data.message,
           } as any,
           timestamp: Date.now(),
         };
+        logger.info(
+          `[WS->Server] Sending AgentResponse: ${RooCodeEventName.Message} taskId=${taskId}${parentTaskId ? ` (parent=${parentTaskId})` : ''}`
+        );
         this.ws.send(JSON.stringify(agentResponse));
         return;
       }
@@ -1118,8 +1185,80 @@ export class ExtensionController extends EventEmitter {
           } as any,
           timestamp: Date.now(),
         };
+        logger.info(
+          `[WS->Server] Sending AgentResponse: ${RooCodeEventName.TaskCreated} taskId=${taskId}`
+        );
         this.ws.send(JSON.stringify(agentResponse));
         return;
+      }
+
+      if (eventName === RooCodeEventName.TaskSpawned) {
+        const parentTaskId = args?.[0];
+        const childTaskId = args?.[1];
+        const agentResponse: Message = {
+          type: EMessageFromAgent.AgentResponse,
+          source: ConnectionSource.Agent,
+          agent: { id: this.currentAgentId || 'unknown-agent' },
+          event: {
+            eventName: RooCodeEventName.TaskSpawned,
+            parentTaskId,
+            childTaskId,
+          } as any,
+          timestamp: Date.now(),
+        };
+        this.ws.send(JSON.stringify(agentResponse));
+
+        // Track relationship for routing and UI
+        try {
+          if (parentTaskId && childTaskId) {
+            this.taskParentMap.set(String(childTaskId), String(parentTaskId));
+            this.parentToActiveChild.set(String(parentTaskId), String(childTaskId));
+            logger.info(`Tracked subtask relationship parent=${parentTaskId} -> child=${childTaskId}`);
+          }
+        } catch {}
+
+        // Reinforce auto-approval settings for newly spawned subtask context (fire-and-forget)
+        try {
+          const adapter = this.getRooAdapter();
+          if (adapter?.isActive) {
+            const current = adapter.getConfiguration();
+            Promise.resolve(
+              adapter.setConfiguration({
+                ...current,
+                autoApprovalEnabled: true,
+                alwaysAllowSubtasks: true,
+                alwaysAllowFollowupQuestions: true,
+                alwaysAllowUpdateTodoList: true,
+                alwaysAllowExecute: true,
+              } as any)
+            )
+              .then(() => {
+                logger.info(`Auto-approval reinforced for spawned subtask ${childTaskId}`);
+              })
+              .catch((e) => {
+                logger.warn('Failed to reinforce auto-approval on TaskSpawned:', e);
+              });
+          }
+        } catch (e) {
+          logger.warn('Failed to schedule auto-approval reinforcement on TaskSpawned:', e);
+        }
+        return;
+      }
+
+      if (eventName === (RooCodeEventName as any).TaskPaused) {
+        // Nothing to do explicitly; we rely on TaskSpawned to set mapping
+        return;
+      }
+
+      if (eventName === (RooCodeEventName as any).TaskUnpaused) {
+        const parentTaskId = args?.[0];
+        try {
+          if (parentTaskId && this.parentToActiveChild.has(String(parentTaskId))) {
+            this.parentToActiveChild.delete(String(parentTaskId));
+            logger.info(`Cleared active child mapping for parent=${parentTaskId} on unpause`);
+          }
+        } catch {}
+        // Fall through to generic event broadcast
       }
 
       if (eventName === RooCodeEventName.TaskAborted) {
@@ -1134,6 +1273,9 @@ export class ExtensionController extends EventEmitter {
           } as any,
           timestamp: Date.now(),
         };
+        logger.info(
+          `[WS->Server] Sending AgentResponse: ${RooCodeEventName.TaskAborted} taskId=${taskId}`
+        );
         this.ws.send(JSON.stringify(agentResponse));
         return;
       }
@@ -1146,6 +1288,7 @@ export class ExtensionController extends EventEmitter {
         data: { eventName, eventData: args, extensionId },
         timestamp: Date.now(),
       };
+      logger.info(`[WS->Server] Sending RooCodeEvent: ${eventName}`);
       this.ws.send(JSON.stringify(eventMessage));
     } catch (err) {
       logger.warn('Failed to serialize/broadcast RooCode raw event', err);
@@ -1155,7 +1298,10 @@ export class ExtensionController extends EventEmitter {
   /**
    * Safely extract taskId from parameters, handling various data types
    */
-  private extractTaskId(parameters: any, paramName: string = 'taskId'): string | null {
+  private extractTaskId(
+    parameters: any,
+    paramName: string = 'taskId'
+  ): string | null {
     if (!parameters || !parameters[paramName]) {
       return null;
     }
@@ -1200,14 +1346,24 @@ export class ExtensionController extends EventEmitter {
       logger.info(`Processing RooCode command: ${command}`, {
         parameters: parameters,
         extensionId: extensionId,
-        parameterTypes: parameters ? Object.keys(parameters).reduce((acc, key) => {
-          acc[key] = typeof parameters[key];
-          return acc;
-        }, {} as Record<string, string>) : {},
-        parameterValues: parameters ? Object.keys(parameters).reduce((acc, key) => {
-          acc[key] = parameters[key];
-          return acc;
-        }, {} as Record<string, any>) : {}
+        parameterTypes: parameters
+          ? Object.keys(parameters).reduce(
+              (acc, key) => {
+                acc[key] = typeof parameters[key];
+                return acc;
+              },
+              {} as Record<string, string>
+            )
+          : {},
+        parameterValues: parameters
+          ? Object.keys(parameters).reduce(
+              (acc, key) => {
+                acc[key] = parameters[key];
+                return acc;
+              },
+              {} as Record<string, any>
+            )
+          : {},
       });
 
       const adapter = this.getRooAdapter(extensionId);
@@ -1346,6 +1502,20 @@ export class ExtensionController extends EventEmitter {
             result = { success: true, message: 'Secondary button pressed' };
             break;
 
+          case ERooCodeCommand.SwitchMode:
+            if (parameters?.mode) {
+              // Use Roo API setMode directly for reliability
+              const modeSlug = this.mapModeSlug(parameters.mode);
+              if (!modeSlug) {
+                throw new Error('Mode parameter required');
+              }
+              await (adapter as any).api?.setMode(modeSlug);
+              result = { success: true, message: `Mode set to ${modeSlug}` };
+            } else {
+              throw new Error('Mode parameter required');
+            }
+            break;
+
           case ERooCodeCommand.SendMessage:
             if (parameters?.message) {
               const events: any[] = [];
@@ -1387,7 +1557,7 @@ export class ExtensionController extends EventEmitter {
           errorMessage: (cmdError as Error).message,
           errorStack: (cmdError as Error).stack,
           parameters: parameters,
-          extensionId: extensionId
+          extensionId: extensionId,
         });
       }
 

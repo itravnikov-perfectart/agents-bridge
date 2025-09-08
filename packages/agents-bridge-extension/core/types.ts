@@ -94,6 +94,7 @@ export enum ERooCodeCommand {
   ClearCurrentTask = "clearCurrentTask",
   CancelCurrentTask = "cancelCurrentTask",
   ResumeTask = "resumeTask",
+  SwitchMode = "switchMode",
   PressPrimaryButton = "pressPrimaryButton",
   PressSecondaryButton = "pressSecondaryButton",
   SendMessage = "sendMessage",

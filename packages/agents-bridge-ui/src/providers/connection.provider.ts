@@ -28,6 +28,7 @@ import {
 } from '../queries/useTasks';
 import { useAddProfiles, useUpdateActiveProfile } from '../queries/useProfiles';
 import { useQueryClient } from '@tanstack/react-query';
+import { useSettings } from '../components/Settings';
 import { RooCodeEventName, RooCodeSettings } from '@roo-code/types';
 import { useAddAgentConfiguration } from '../queries/useAgentConfiguration';
 
@@ -52,10 +53,13 @@ export interface WebSocketContextType {
     agentId: string,
     taskId: string,
     message: string,
-    profile?: string | null
+    profile?: string | null,
+    mode?: string | null
   ) => void;
   sendMessageToTask: (agentId: string, taskId: string, message: string) => void;
   resumeTask: (agentId: string, taskId: string) => void;
+  cancelCurrentTask: (agentId: string) => void;
+  terminateTask: (agentId: string, taskId: string) => void;
   sendToolApprovalResponse: (
     agentId: string,
     taskId: string,
@@ -68,7 +72,7 @@ export interface WebSocketContextType {
   stopRemoteAgent: (agentId: string) => void;
   getRemoteAgents: () => void;
   cloneRepository: (agentId: string, repoUrl: string, gitToken?: string) => void;
-  
+
   // Event handlers for remote agents
   onRemoteAgentCreated: (handler: (container: any) => void) => () => void;
   onRemoteAgentError: (handler: (error: string, action: string) => void) => () => void;
@@ -81,6 +85,9 @@ export interface WebSocketContextType {
   ) => () => void;
   onTaskIdChange: (
     handler: (oldTaskId: string, newTaskId: string) => void
+  ) => () => void;
+  onTaskSpawned: (
+    handler: (args: { agentId: string; parentTaskId: string; childTaskId: string }) => void
   ) => () => void;
 }
 
@@ -105,6 +112,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const [connectionAttempts, setConnectionAttempts] = useState(0);
 
   const queryClient = useQueryClient();
+  const { settings } = useSettings();
 
   const updateAgentsMutation = useUpdateAgents();
   const removeAgentMutation = useRemoveAgent();
@@ -128,6 +136,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const requestedAgentConfigurationRef = useRef<Set<string>>(new Set());
   const requestedTaskHistoryRef = useRef<Set<string>>(new Set());
   const processedMessageTimestamps = useRef<Set<string>>(new Set());
+  // Track auto-approvals to prevent duplicate presses and races
+  const autoApprovedNewTaskForTaskIdRef = useRef<Set<string>>(new Set());
+  const spawnObservedForParentRef = useRef<Set<string>>(new Set());
 
   // Cleanup old deduplication entries periodically to prevent memory leaks
   const cleanupDeduplicationSet = useCallback(() => {
@@ -144,6 +155,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const connectionHandlersRef = useRef<Set<(isConnected: boolean) => void>>(
     new Set()
   );
+  const taskSpawnedHandlersRef = useRef<
+    Set<(args: { agentId: string; parentTaskId: string; childTaskId: string }) => void>
+  >(new Set());
 
   const clearTimers = useCallback(() => {
     if (reconnectTimeoutRef.current) {
@@ -169,10 +183,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const handleServerMessage = useCallback((message: Message) => {
     switch (message.type) {
       case EMessageFromServer.AgentList:
-        console.log('[DEBUG] Received agent list:', message.data?.agents);
-        (message.data?.agents || []).forEach((agent: any) => {
-          console.log(`[DEBUG] Agent ${agent.id}: isRemote=${agent.isRemote}, workspace=${agent.workspacePath}`);
-        });
         updateAgentsMutation.mutate(message.data?.agents || []);
         (message.data?.agents || []).forEach((agent: any) => {
           if (agent?.id) {
@@ -181,9 +191,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         });
         break;
       case EMessageFromServer.AgentUpdate:
-        console.log('🔄 Agent update:', message.data);
-        
-        // If this is a disconnection event, remove the agent from UI
         if (message.data?.action === 'disconnected' && message.data?.agentId) {
           removeAgentMutation.mutate(message.data.agentId);
         } else {
@@ -240,35 +247,106 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               },
             });
             break;
-          case RooCodeEventName.TaskCreated:
-            getActiveTaskIds(message.agent?.id || '');
+          case RooCodeEventName.TaskCreated: {
+            const agentId = message.agent?.id || '';
+            const taskId = (message.event as any)?.taskId?.toString?.() || '';
+            if (taskId) {
+              // If a task was just created and we recently received TaskSpawned for it,
+              // keep any parent linkage we may have set and avoid overriding it.
+              addTasksMutation.mutate({
+                agentId,
+                tasks: [
+                  {
+                    id: taskId,
+                    agentId,
+                  } as any,
+                ],
+              });
+            }
+            getActiveTaskIds(agentId);
             break;
+          }
+          case RooCodeEventName.TaskSpawned: {
+            const agentId = message.agent?.id || '';
+            const parentTaskId =
+              (message.event as any)?.parentTaskId?.toString?.() ||
+              (message.event as any)?.taskId?.toString?.() ||
+              '';
+            const childTaskId =
+              (message.event as any)?.childTaskId?.toString?.() || '';
+            if (!childTaskId) {
+              break;
+            }
+
+            // Mark that a spawn has occurred for this parent to avoid further auto-approval on parent
+            if (parentTaskId) {
+              spawnObservedForParentRef.current.add(parentTaskId);
+              console.info('[UI] TaskSpawned observed', { agentId, parentTaskId, childTaskId });
+            }
+
+            // Infer child level from parent if available
+            const tasksKey = getTasksByAgentId(agentId).queryKey;
+            const existingTasks =
+              (queryClient.getQueryData(tasksKey) as any[]) || [];
+            const parentTask = existingTasks.find((t) => t.id === parentTaskId);
+            const parentLevel = parentTask?.level ?? 0;
+            const childLevel = parentLevel + 1;
+
+            addTasksMutation.mutate({
+              agentId,
+              tasks: [
+                {
+                  id: childTaskId,
+                  agentId,
+                  parentTaskId: parentTaskId || undefined,
+                  isSubtask: true,
+                  level: childLevel,
+                } as any,
+              ],
+            });
+
+            // Also refresh active task ids to ensure child is tracked
+            getActiveTaskIds(agentId);
+
+            // Notify UI about spawned task so it can focus the child tab
+            taskSpawnedHandlersRef.current.forEach((handler) => {
+              try {
+                handler({ agentId, parentTaskId: parentTaskId || '', childTaskId });
+              } catch {}
+            });
+            break;
+          }
           case RooCodeEventName.Message: {
-            const evt = (message.event as any)?.message ?? (message.event as any);
+            const evt =
+              (message.event as any)?.message ?? (message.event as any);
             const text = evt?.text || '';
             const isEmpty = !text;
             const isPartial = !!evt?.partial;
             const say = evt?.say;
             const isAsk = evt?.type === 'ask' || say === 'ask';
+            const isSubtaskEvent = !!(message.event as any)?.isSubtask;
             const messageTimestamp = evt?.ts?.toString();
 
             // Create a unique key for this message to prevent duplicates
-            // For streaming messages, we should only deduplicate based on message ID and timestamp
-            // not content, since content changes as the message streams
-            const messageKey = `${message.event!.taskId}-${messageTimestamp || 'no-ts'}-${say || 'unknown'}-${isAsk ? 'ask' : 'normal'}`;
+            // Include partial flag and text snippet to reduce over-aggressive dedupe for repeated partials with changing text
+            const textHashPart =
+              typeof text === 'string' && text.length > 0
+                ? text.slice(0, 40)
+                : 'no-text';
+            const messageKey = `${message.event!.taskId}-${messageTimestamp || 'no-ts'}-${say || 'unknown'}-${isAsk ? 'ask' : 'normal'}-${isPartial ? 'partial' : 'final'}-${textHashPart}`;
 
             // For streaming messages (partial=true), we should allow updates to the same message
             // Only skip if it's a complete message (not partial) and we've seen it before
-            if (!isPartial && processedMessageTimestamps.current.has(messageKey)) {
+            if (
+              !isPartial &&
+              processedMessageTimestamps.current.has(messageKey)
+            ) {
               console.log('Skipping duplicate complete message:', messageKey);
               break;
             }
-            
-            // For partial messages, we don't add to the deduplication set
-            // For complete messages, we add to prevent future duplicates
-            if (!isPartial) {
-              processedMessageTimestamps.current.add(messageKey);
-            }
+
+            // Track both partial and final messages distinctly
+            processedMessageTimestamps.current.add(messageKey);
 
             // Cleanup deduplication set if it gets too large
             cleanupDeduplicationSet();
@@ -336,6 +414,26 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   taskId: message.event!.taskId!.toString(),
                   content: text,
                 });
+              } else if (!isAsk && typeof say === 'string') {
+                // Stream non-text 'say' updates (e.g., api_req_retry_delayed)
+                try {
+                  const payload = {
+                    type: 'say',
+                    say: say,
+                    text: text,
+                    partial: true,
+                  } as any;
+                  upsertAgentStreamMessage.mutate({
+                    taskId: message.event!.taskId!.toString(),
+                    content: JSON.stringify(payload),
+                  });
+                } catch {
+                  // Fallback to plain text stream
+                  upsertAgentStreamMessage.mutate({
+                    taskId: message.event!.taskId!.toString(),
+                    content: text,
+                  });
+                }
               } else if (isAsk) {
                 // Handle tool approval requests specifically
                 if (
@@ -346,6 +444,52 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   try {
                     const toolData = JSON.parse(text);
                     if (toolData.tool) {
+                      // If auto-approval is enabled, immediately approve parent newTask prompts
+                      try {
+                        const isNewTaskTool =
+                          typeof toolData.tool === 'string' &&
+                          toolData.tool.toLowerCase().includes('newtask');
+                        if (settings?.autoApproval && isNewTaskTool) {
+                          const agentId = message.agent?.id || '';
+                          const taskId = message.event!.taskId!.toString();
+                          // Skip if we've already auto-approved for this task, or if spawn already observed
+                          if (
+                            autoApprovedNewTaskForTaskIdRef.current.has(taskId) ||
+                            spawnObservedForParentRef.current.has(taskId)
+                          ) {
+                            console.info('[UI] Skipping newTask auto-approval', {
+                              agentId,
+                              taskId,
+                              alreadyApproved: autoApprovedNewTaskForTaskIdRef.current.has(taskId),
+                              spawnObserved: spawnObservedForParentRef.current.has(taskId),
+                            });
+                            break;
+                          }
+                          autoApprovedNewTaskForTaskIdRef.current.add(taskId);
+                          console.info('[UI->WS] Auto-approve parent newTask tool', { agentId, taskId, tool: toolData.tool });
+                          // Resume the parent task then approve
+                          sendMessage({
+                            type: EMessageFromUI.RooCodeCommand,
+                            source: ConnectionSource.UI,
+                            agent: { id: agentId },
+                            data: { command: 'resumeTask', parameters: { taskId } },
+                            timestamp: Date.now(),
+                          });
+                          // Small delay to let Roo set the current task context before pressing
+                          setTimeout(() => {
+                            console.info('[UI->WS] Auto-approve newTask: pressPrimaryButton', { agentId, taskId });
+                            sendMessage({
+                              type: EMessageFromUI.RooCodeCommand,
+                              source: ConnectionSource.UI,
+                              agent: { id: agentId },
+                              data: { command: 'pressPrimaryButton' },
+                              timestamp: Date.now(),
+                            });
+                          }, 300);
+                          // Skip adding approval prompt to chat for this case
+                          break;
+                        }
+                      } catch {}
                       const contentJson = {
                         type: 'tool_approval',
                         tool: toolData.tool,
@@ -440,9 +584,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     | any[]
                     | undefined;
                   const last =
-                    prev && prev.length > 0
-                      ? prev[prev.length - 1]
-                      : undefined;
+                    prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
                   let updated = false;
 
                   if (
@@ -508,8 +650,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   for (const s of rawSuggest) {
                     const val =
                       s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
-                    if (typeof val === 'string' && val.trim())
+                    if (typeof val === 'string' && val.trim()) {
                       candidates.push(val.trim());
+                    }
                   }
                 }
                 if (evt?.buttons) {
@@ -518,10 +661,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     evt.buttons.ok ??
                     evt.buttons.confirm;
                   const secondary = evt.buttons.secondary ?? evt.buttons.cancel;
-                  if (typeof primary === 'string' && primary.trim())
+                  if (typeof primary === 'string' && primary.trim()) {
                     candidates.push(primary.trim());
-                  if (typeof secondary === 'string' && secondary.trim())
+                  }
+                  if (typeof secondary === 'string' && secondary.trim()) {
                     candidates.push(secondary.trim());
+                  }
                 }
                 const question = (evt?.question ||
                   (typeof evt?.ask === 'string'
@@ -664,17 +809,19 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   }),
                 },
               });
-              
-              // Update task completion status
-              updateTaskMutation.mutate({
-                agentId: message.agent?.id || '',
-                taskId: message.event!.taskId!.toString(),
-                task: {
-                  id: message.event!.taskId!.toString(),
+
+              // Update task completion status only for main tasks
+              if (!isSubtaskEvent) {
+                updateTaskMutation.mutate({
                   agentId: message.agent?.id || '',
-                  isCompleted: true,
-                },
-              });
+                  taskId: message.event!.taskId!.toString(),
+                  task: {
+                    id: message.event!.taskId!.toString(),
+                    agentId: message.agent?.id || '',
+                    isCompleted: true,
+                  },
+                });
+              }
               break;
             }
 
@@ -739,8 +886,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     for (const s of rawSuggest) {
                       const val =
                         s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
-                      if (typeof val === 'string' && val.trim())
+                      if (typeof val === 'string' && val.trim()) {
                         candidates.push(val.trim());
+                      }
                     }
                   }
                   if (evt?.buttons) {
@@ -750,10 +898,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                       evt.buttons.confirm;
                     const secondary =
                       evt.buttons.secondary ?? evt.buttons.cancel;
-                    if (typeof primary === 'string' && primary.trim())
+                    if (typeof primary === 'string' && primary.trim()) {
                       candidates.push(primary.trim());
-                    if (typeof secondary === 'string' && secondary.trim())
+                    }
+                    if (typeof secondary === 'string' && secondary.trim()) {
                       candidates.push(secondary.trim());
+                    }
                   }
                   const question = (evt?.question ||
                     (typeof evt?.ask === 'string'
@@ -848,6 +998,34 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     true
                   );
                 } else {
+                  // Special handling for orchestrator subtask sections
+                  const lowerSay = typeof say === 'string' ? say.toLowerCase() : '';
+                  const isSubtaskSection =
+                    lowerSay === 'subtask_instructions' ||
+                    lowerSay === 'subtask' ||
+                    lowerSay === 'subtask_results' ||
+                    lowerSay === 'subtask result' ||
+                    lowerSay === 'subtask instruction' ||
+                    lowerSay === 'subtasks' ||
+                    lowerSay === 'subtask-summary';
+                  if (isSubtaskSection) {
+                    addMessageMutation.mutate({
+                      taskId: message.event!.taskId!.toString(),
+                      message: {
+                        type: 'agent',
+                        content: JSON.stringify({
+                          type: 'say',
+                          say: lowerSay,
+                          text: text,
+                        }),
+                      },
+                    });
+                    triggerLoadingStateChange(
+                      message.event!.taskId!.toString(),
+                      false
+                    );
+                    break;
+                  }
                   // Non-ask structured, just append text
                   addMessageMutation.mutate({
                     taskId: message.event!.taskId!.toString(),
@@ -868,6 +1046,25 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         }
 
         break;
+      case EMessageFromAgent.RooCodeEvent: {
+        const eventName = (message.data as any)?.eventName;
+        if (eventName === 'taskCompleted') {
+          try {
+            const dataArr = (message.data as any)?.eventData as any[];
+            const taskId = (dataArr?.[0] || '').toString();
+            const flags = dataArr?.[3] || {};
+            const isSubtask = !!flags?.isSubtask;
+            if (taskId && !isSubtask) {
+              updateTaskMutation.mutate({
+                agentId: message.agent?.id || '',
+                taskId,
+                task: { id: taskId, agentId: message.agent?.id || '', isCompleted: true },
+              });
+            }
+          } catch {}
+        }
+        break;
+      }
       case EMessageFromAgent.ActiveTaskIdsResponse:
         addTasksMutation.mutate({
           agentId: message.agent?.id || '',
@@ -878,24 +1075,26 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               isCompleted: false,
             })) || [],
         });
-        
+
         // Automatically load task details for all active tasks to get proper titles
         (message.data?.activeTaskIds || []).forEach((taskId: string) => {
           getTaskDetails(message.agent?.id || '', taskId);
         });
-        
+
         // Note: getTaskHistory is now called only when agent is selected, not here
         break;
       case EMessageFromAgent.RooCodeTaskHistory: {
         const agentId = message.agent?.id || '';
-        const taskId =
-          message.data?.taskId ||
-          '';
-        if (!taskId) break;
+        const taskId = message.data?.taskId || '';
+        if (!taskId) {
+          break;
+        }
         const rawItems = message.data?.messages || message.data?.history || [];
         const items = (Array.isArray(rawItems) ? rawItems : []).map(
           (m: any) => {
-            if (m?.type && m?.content !== undefined) return m;
+            if (m?.type && m?.content !== undefined) {
+              return m;
+            }
             const content =
               typeof m === 'string' ? m : (m?.text ?? m?.message ?? '');
             return { type: 'agent', content };
@@ -920,14 +1119,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       case EMessageFromAgent.RooCodeCommandResponse: {
         const cmd = message.data?.command as string | undefined;
         const success = !!message.data?.success;
-        if (!cmd || !success) break;
+        if (!cmd || !success) {
+          break;
+        }
         if (cmd === 'getTaskHistory') {
           const history = message.data?.result || [];
           const agentId = message.agent?.id || '';
           const tasks = (Array.isArray(history) ? history : [])
             .map((h: any) => {
               const id = h?.id || h?.taskId || h;
-              if (!id) return null as any;
+              if (!id) {
+                return null as any;
+              }
               return {
                 id,
                 agentId,
@@ -947,11 +1150,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           const agentId = message.agent?.id || '';
           const res = message.data?.result || {};
           const taskId =
-            res?.historyItem?.id ||
-            res?.taskId ||
-            message.data?.taskId ||
-            '';
-          if (!taskId) break;
+            res?.historyItem?.id || res?.taskId || message.data?.taskId || '';
+          if (!taskId) {
+            break;
+          }
           const apiConv = res?.apiConversationHistory || [];
           const msgs = (Array.isArray(apiConv) ? apiConv : [])
             .map((m: any) => {
@@ -992,7 +1194,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 let s;
                 while ((s = suggestRegex.exec(rawText)) !== null) {
                   const ans = (s[1] || '').trim();
-                  if (ans) suggest.push({ answer: ans });
+                  if (ans) {
+                    suggest.push({ answer: ans });
+                  }
                 }
                 const payload = { question, suggest };
                 if (question || suggest.length) {
@@ -1017,24 +1221,36 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 .trim();
 
               // Skip messages that are just "false" or other uninformative content
-              if (cleaned === 'false' || cleaned === 'true' || cleaned === 'null' || cleaned === 'undefined') {
+              if (
+                cleaned === 'false' ||
+                cleaned === 'true' ||
+                cleaned === 'null' ||
+                cleaned === 'undefined'
+              ) {
                 return null;
               }
 
               // Skip messages that are just file listings or directory structures
-              if (cleaned.match(/^[\w\-\.\/\s]+$/i) && cleaned.split('\n').length > 10) {
+              if (
+                cleaned.match(/^[\w\-\.\/\s]+$/i) &&
+                cleaned.split('\n').length > 10
+              ) {
                 return null;
               }
 
               // Skip messages that are just package.json content without context
-              if (cleaned.includes('"name":') && cleaned.includes('"version":') && cleaned.includes('"dependencies":')) {
+              if (
+                cleaned.includes('"name":') &&
+                cleaned.includes('"version":') &&
+                cleaned.includes('"dependencies":')
+              ) {
                 return {
                   type: 'agent' as const,
                   content: JSON.stringify({
                     type: 'say',
                     say: 'auto_followup',
-                    text: 'I found the package.json file. This appears to be an auto-followup to examine the project structure.'
-                  })
+                    text: 'I found the package.json file. This appears to be an auto-followup to examine the project structure.',
+                  }),
                 };
               }
 
@@ -1044,7 +1260,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               };
             })
             .filter(
-              (x: any) => x !== null && typeof x.content === 'string' && x.content.trim()
+              (x: any) =>
+                x !== null && typeof x.content === 'string' && x.content.trim()
             );
           if (msgs.length) {
             addMessagesMutation.mutate({ taskId, messages: msgs as any });
@@ -1080,7 +1297,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           queryClient.setQueryData(
             getTasksByAgentId(agentId).queryKey,
             (old: any[] | undefined) => {
-              if (!old) return [];
+              if (!old) {
+                return [];
+              }
 
               // Remove the old task with clientTaskId
               const filtered = old.filter(
@@ -1104,7 +1323,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           );
 
           // Notify about task ID change so UI can update selectedTaskId
-          triggerTaskIdChange(message.data?.clientTaskId, message.data?.agentTaskId);
+          triggerTaskIdChange(
+            message.data?.clientTaskId,
+            message.data?.agentTaskId
+          );
         } else {
           addTasksMutation.mutate({
             agentId: message.agent?.id || '',
@@ -1145,8 +1367,6 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     const websocket = new WebSocket(url);
 
     websocket.onopen = () => {
-      console.log('🔗 Connected to WebSocket server');
-
       wsRef.current = websocket;
       setIsConnected(true);
       setIsConnecting(false);
@@ -1274,11 +1494,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   // Отправка сообщения
   const sendMessage = useCallback(
     (message: Message) => {
-      console.log('📤 Sending message:', message);
       if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
         try {
           wsRef.current.send(JSON.stringify(message));
-          console.log('✅ Message sent successfully');
         } catch (error) {
           console.error('❌ Ошибка отправки сообщения:', error);
           if (!isConnecting) {
@@ -1286,7 +1504,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           }
         }
       } else {
-        console.warn('⚠️ WebSocket not connected, state:', wsRef.current?.readyState);
+        console.warn(
+          '⚠️ WebSocket not connected, state:',
+          wsRef.current?.readyState
+        );
         if (!isConnecting && !isConnected) {
           console.log('🔄 Auto-reconnecting...');
           connect();
@@ -1315,6 +1536,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getActiveTaskIds = useCallback(
     async (agentId: string) => {
+      console.info('[UI->WS] GetActiveTaskIds', { agentId });
       const message: Message = {
         type: EMessageFromUI.GetActiveTaskIds,
         source: ConnectionSource.UI,
@@ -1327,6 +1549,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   );
 
   const getAgents = useCallback(async () => {
+    console.info('[UI->WS] GetAgents');
     const message: Message = {
       type: EMessageFromUI.GetAgents,
       source: ConnectionSource.UI,
@@ -1337,6 +1560,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getProfiles = useCallback(
     async (agentId: string) => {
+      console.info('[UI->WS] GetProfiles', { agentId });
       if (requestedProfilesRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1355,6 +1579,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getActiveProfile = useCallback(
     async (agentId: string) => {
+      console.info('[UI->WS] GetActiveProfile', { agentId });
       if (requestedActiveProfileRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1407,6 +1632,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getTaskHistory = useCallback(
     async (agentId: string) => {
+      console.info('[UI->WS] RooCodeCommand:getTaskHistory', { agentId });
       if (requestedTaskHistoryRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1427,6 +1653,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getTaskDetails = useCallback(
     async (agentId: string, taskId: string) => {
+      console.info('[UI->WS] RooCodeCommand:getTaskDetails', { agentId, taskId });
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
@@ -1443,6 +1670,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const resumeTask = useCallback(
     async (agentId: string, taskId: string) => {
+      console.info('[UI->WS] RooCodeCommand:resumeTask', { agentId, taskId });
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
@@ -1457,6 +1685,45 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [sendMessage]
   );
 
+  const cancelCurrentTask = useCallback(
+    async (agentId: string) => {
+      console.info('[UI->WS] RooCodeCommand:cancelCurrentTask', { agentId });
+      const wsMessage: Message = {
+        type: EMessageFromUI.RooCodeCommand,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: {
+          command: 'cancelCurrentTask',
+        },
+      };
+      sendMessage(wsMessage);
+    },
+    [sendMessage]
+  );
+
+  const terminateTask = useCallback(
+    async (agentId: string, taskId: string) => {
+      console.info('[UI->WS] TerminateTask', { agentId, taskId });
+      // 1) Make the task current
+      sendMessage({
+        type: EMessageFromUI.RooCodeCommand,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: { command: 'resumeTask', parameters: { taskId } },
+        timestamp: Date.now(),
+      });
+      // 2) Cancel current task
+      sendMessage({
+        type: EMessageFromUI.RooCodeCommand,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: { command: 'cancelCurrentTask' },
+        timestamp: Date.now(),
+      });
+    },
+    [sendMessage]
+  );
+
   const sendToolApprovalResponse = useCallback(
     async (
       agentId: string,
@@ -1464,20 +1731,42 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       approved: boolean,
       _toolData?: any
     ) => {
-      // Send proper approval response format
-      const response = approved ? "The task was autoapproved with info in the chat" : "noButtonClicked";
+      // Do not send any approval messages if the task is already completed
+      try {
+        const tasksKey = getTasksByAgentId(agentId).queryKey;
+        const tasks = (queryClient.getQueryData(tasksKey) as any[]) || [];
+        const target = tasks.find((t) => t.id === taskId);
+        if (target?.isCompleted) {
+          console.warn('Skipping approval send for completed task', { taskId, agentId });
+          return;
+        }
+      } catch {}
 
-      const wsMessage: Message = {
-        type: EMessageFromUI.SendMessageToTask,
+      // Resume the intended task to make it current, then press the appropriate button
+      // 1) Resume task
+      console.info('[UI->WS] RooCodeCommand:resumeTask (for approval)', { agentId, taskId });
+      sendMessage({
+        type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
         agent: { id: agentId },
         data: {
-          taskId,
-          message: response,
+          command: 'resumeTask',
+          parameters: { taskId },
         },
         timestamp: Date.now(),
-      };
-      sendMessage(wsMessage);
+      });
+
+      // 2) Press primary/secondary button instead of sending a text message to the task
+      console.info('[UI->WS] RooCodeCommand:pressButton', { agentId, approved });
+      sendMessage({
+        type: EMessageFromUI.RooCodeCommand,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: {
+          command: approved ? 'pressPrimaryButton' : 'pressSecondaryButton',
+        },
+        timestamp: Date.now(),
+      });
     },
     [sendMessage]
   );
@@ -1487,8 +1776,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       agentId: string,
       taskId: string,
       message: string,
-      profile?: string | null
+      profile?: string | null,
+      mode?: string | null
     ) => {
+      console.info('[UI->WS] CreateTask', { agentId, taskId, profile, mode });
       const wsMessage: Message = {
         type: EMessageFromUI.CreateTask,
         source: ConnectionSource.UI,
@@ -1497,6 +1788,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           taskId,
           message,
           ...(profile ? { profile } : {}),
+          ...(mode ? { mode } : {}),
         },
       };
 
@@ -1507,6 +1799,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const sendMessageToTask = useCallback(
     async (agentId: string, taskId: string, message: string) => {
+      console.info('[UI->WS] SendMessageToTask', { agentId, taskId, hasMessage: !!message });
       const wsMessage: Message = {
         type: EMessageFromUI.SendMessageToTask,
         source: ConnectionSource.UI,
@@ -1591,11 +1884,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const taskIdChangeHandlersRef = useRef<
     Set<(oldTaskId: string, newTaskId: string) => void>
   >(new Set());
-  
+
   const remoteAgentCreatedHandlersRef = useRef<
     Set<(container: any) => void>
   >(new Set());
-  
+
   const remoteAgentErrorHandlersRef = useRef<
     Set<(error: string, action: string) => void>
   >(new Set());
@@ -1615,6 +1908,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       taskIdChangeHandlersRef.current.add(handler);
       return () => {
         taskIdChangeHandlersRef.current.delete(handler);
+      };
+    },
+    []
+  );
+
+  const onTaskSpawned = useCallback(
+    (
+      handler: (args: {
+        agentId: string;
+        parentTaskId: string;
+        childTaskId: string;
+      }) => void
+    ) => {
+      taskSpawnedHandlersRef.current.add(handler);
+      return () => {
+        taskSpawnedHandlersRef.current.delete(handler);
       };
     },
     []
@@ -1725,6 +2034,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     startNewTask,
     sendMessageToTask,
     resumeTask,
+    cancelCurrentTask,
+    terminateTask,
     sendToolApprovalResponse,
     createRemoteAgent,
     stopRemoteAgent,
@@ -1736,7 +2047,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     onRemoteAgentCreated,
     onRemoteAgentError,
     getAgentConfiguration,
-    sendAgentConfiguration
+    sendAgentConfiguration,
+    onTaskSpawned,
   };
 
   return React.createElement(
