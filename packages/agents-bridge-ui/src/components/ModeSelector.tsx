@@ -15,6 +15,7 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
     { value: 'code', label: 'Code' },
     { value: 'chat', label: 'Chat' },
     { value: 'task', label: 'Task' },
+    { value: 'orchestrator', label: 'Orchestrator' },
   ];
 
   return (
