@@ -234,7 +234,7 @@ export function ChatList({
 
   if (!selectedAgent) {
     return (
-      <div className="flex-1 flex items-center justify-center bg-background">
+      <div className="flex-1 flex items-center justify-center bg-background h-full">
         <div className="text-center text-muted-foreground">
           <MessageCircle className="h-16 w-16 mx-auto mb-4 opacity-50" />
           <h3 className="text-lg font-medium mb-2">Select Agent</h3>
