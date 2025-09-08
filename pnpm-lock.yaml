@@ -90,16 +90,25 @@ importers:
 
   packages/agents-bridge-remote:
     dependencies:
+      cmd-ts:
+        specifier: ^0.13.0
+        version: 0.13.0
       execa:
         specifier: ^9.6.0
         version: 9.6.0
       tsx:
         specifier: ^4.19.3
         version: 4.20.5
+      ws:
+        specifier: ^8.14.2
+        version: 8.18.3
     devDependencies:
       '@types/node':
         specifier: ^20.0.0
         version: 20.19.10
+      '@types/ws':
+        specifier: ^8.5.10
+        version: 8.18.1
       path:
         specifier: ^0.12.7
         version: 0.12.7
@@ -1968,6 +1977,9 @@ packages:
   clsx@2.1.1:
     resolution: {integrity: sha512-eYm0QWBtUrBWZWG0d386OGAw16Z995PiOVo2B7bjWSbHedGl5e0ZWaq65kOGgUSNesEIDkB9ISbTg/JK9dhCZA==}
     engines: {node: '>=6'}
+
+  cmd-ts@0.13.0:
+    resolution: {integrity: sha512-nsnxf6wNIM/JAS7T/x/1JmbEsjH0a8tezXqqpaL0O6+eV0/aDEnRxwjxpu0VzDdRcaC1ixGSbRlUuf/IU59I4g==}
 
   cockatiel@3.2.1:
     resolution: {integrity: sha512-gfrHV6ZPkquExvMh9IOkKsBzNDk6sDuZ6DdBGUBkvFnTCqCxzpuq48RySgP0AnaqQkw2zynOFj9yly6T1Q2G5Q==}
@@ -5641,6 +5653,15 @@ snapshots:
       clsx: 2.1.1
 
   clsx@2.1.1: {}
+
+  cmd-ts@0.13.0:
+    dependencies:
+      chalk: 4.1.2
+      debug: 4.4.1
+      didyoumean: 1.2.2
+      strip-ansi: 6.0.1
+    transitivePeerDependencies:
+      - supports-color
 
   cockatiel@3.2.1: {}
 

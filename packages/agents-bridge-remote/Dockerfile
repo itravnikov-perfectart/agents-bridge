@@ -117,7 +117,8 @@ RUN cp -r /app/.vscode-template /app/.vscode
 # Configure VS Code settings for Docker environment
 RUN mkdir -p /app/.vscode/User /app/.vscode-template/User
 
-# Create settings.json with WebSocket configuration for Docker
+# Create default settings.json with WebSocket configuration for Docker
+# This will be updated by entrypoint.sh based on environment variables
 RUN echo '{\
   "agent-bridge.wsUrl": "ws://host.docker.internal:8080",\
   "agent-bridge.wsPingInterval": 10000\
@@ -126,13 +127,16 @@ RUN echo '{\
 # Copy settings to template as well
 RUN cp /app/.vscode/User/settings.json /app/.vscode-template/User/settings.json
 
-# Copy entrypoint script
+# Copy scripts
 COPY packages/agents-bridge-remote/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
-RUN chmod +x /usr/local/bin/entrypoint.sh
+COPY packages/agents-bridge-remote/scripts/network-test.sh /usr/local/bin/network-test.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh /usr/local/bin/network-test.sh
 
 # Set environment variables
 ENV DONT_PROMPT_WSL_INSTALL=1
 ENV WORKSPACE_PATH=/workspace
+ENV AGENTS_BRIDGE_WS_URL=ws://host.docker.internal:8080
+ENV AGENTS_BRIDGE_WS_PING_INTERVAL=10000
 
 # Set working directory to container manager
 WORKDIR /app/container-manager

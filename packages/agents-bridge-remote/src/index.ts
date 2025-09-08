@@ -3,6 +3,8 @@
 import { createWriteStream } from 'fs';
 import * as path from "path"
 import { execa } from "execa"
+import { WebSocket } from 'ws';
+
 
 class ContainerManager {
   private isShuttingDown = false;
@@ -45,7 +47,6 @@ class ContainerManager {
       await new Promise((resolve) => setTimeout(resolve, 5000))
   }
 
-
   public async start(): Promise<void> {
     try {
       // Set environment variables
@@ -53,7 +54,10 @@ class ContainerManager {
 
       this.log('🎉 Container Manager started successfully');
       this.log('💡 Container is now running and waiting for commands.');
-      this.log('📡 Agents Bridge Extension can connect to WebSocket server');
+      
+      // Check WebSocket server connection
+      await this.checkWebSocketConnection();
+      
       this.log('🔄 Container will run until shutdown command is received');
       this.log('');
       this.log('📋 To manually shutdown container, create file: /tmp/container-shutdown-signal');
@@ -84,6 +88,47 @@ class ContainerManager {
     this.log('♾️  Container is now running indefinitely...');
   }
 
+  private async checkWebSocketConnection(): Promise<void> {
+    const wsUrl = process.env.AGENTS_BRIDGE_WS_URL || 'ws://host.docker.internal:8080';
+    
+    this.log(`🔍 Проверка подключения к WebSocket серверу: ${wsUrl}`);
+    
+    return new Promise((resolve) => {
+      const ws = new WebSocket(wsUrl);
+      let connectionChecked = false;
+
+      const timeout = setTimeout(() => {
+        if (!connectionChecked) {
+          connectionChecked = true;
+          this.log(`⚠️  WebSocket сервер недоступен: ${wsUrl}`);
+          this.log('📡 Agents Bridge Extension попробует подключиться позже');
+          ws.terminate();
+          resolve();
+        }
+      }, 5000); // 5 seconds timeout
+
+      ws.on('open', () => {
+        if (!connectionChecked) {
+          connectionChecked = true;
+          this.log('✅ WebSocket сервер доступен и готов к подключению');
+          clearTimeout(timeout);
+          ws.close();
+          resolve();
+        }
+      });
+
+      ws.on('error', () => {
+        if (!connectionChecked) {
+          connectionChecked = true;
+          this.log(`⚠️  WebSocket сервер недоступен: ${wsUrl}`);
+          this.log('📡 Agents Bridge Extension попробует подключиться позже');
+          clearTimeout(timeout);
+          resolve();
+        }
+      });
+    });
+  }
+
   private async shutdown(): Promise<void> {
     if (this.isShuttingDown) {
       return;
@@ -103,7 +148,6 @@ class ContainerManager {
   }
 }
 
-// Start the container manager
 const manager = new ContainerManager();
 manager.start().catch((error) => {
   console.error('Failed to start container:', error);

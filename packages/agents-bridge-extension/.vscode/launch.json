@@ -2,7 +2,7 @@
 	"version": "0.2.0",
 	"configurations": [
 		{
-			"name": "Launch Extension",
+			"name": "Launch Extension (from extension folder)",
 			"type": "extensionHost",
 			"request": "launch",
 			"runtimeExecutable": "${execPath}",
@@ -11,6 +11,19 @@
 			],
 			"outFiles": [
 				"${workspaceFolder}/dist/**/*.js"
+			],
+			"preLaunchTask": "build"
+		},
+		{
+			"name": "Launch Extension (from monorepo root)",
+			"type": "extensionHost",
+			"request": "launch",
+			"runtimeExecutable": "${execPath}",
+			"args": [
+				"--extensionDevelopmentPath=${workspaceFolder}/packages/agents-bridge-extension"
+			],
+			"outFiles": [
+				"${workspaceFolder}/packages/agents-bridge-extension/dist/**/*.js"
 			],
 			"preLaunchTask": "build"
 		}

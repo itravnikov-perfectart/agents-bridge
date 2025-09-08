@@ -3,7 +3,6 @@ import * as vscode from "vscode";
 export interface AgentConfiguration {
   defaultRooIdentifier: string;
   wsUrl: string;
-  wsPort: number;
   wsPingInterval: number;
 }
 
@@ -22,7 +21,6 @@ export const CONFIG_KEYS = {
 export const DEFAULT_CONFIG: AgentConfiguration = {
   defaultRooIdentifier: "RooVeterinaryInc.roo-cline",
   wsUrl: "ws://localhost:8080",
-  wsPort: 8080,
   wsPingInterval: 10000,
 };
 
@@ -41,7 +39,6 @@ export const readConfiguration = (): AgentConfiguration => {
       CONFIG_KEYS.WS_URL,
       DEFAULT_CONFIG.wsUrl,
     ),
-    wsPort: 8080, // Default port, could be made configurable
     wsPingInterval: config.get<number>(
       CONFIG_KEYS.WS_PING_INTERVAL,
       DEFAULT_CONFIG.wsPingInterval,

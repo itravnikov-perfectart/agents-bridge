@@ -1,5 +1,5 @@
 // Docker removed from extension
-import { RooCodeEventName } from '@roo-code/types';
+import { RooCodeEventName, RooCodeSettings } from '@roo-code/types';
 import { EventEmitter } from 'events';
 import * as vscode from 'vscode';
 import { WebSocket } from 'ws';
@@ -211,11 +211,11 @@ export class ExtensionController extends EventEmitter {
       // Initialize all RooCode adapters
       if (this.rooAdapter) {
         await this.rooAdapter.initialize();
-        
+
         // Wait for the API to be ready after initialization
         const maxWaitTime = 10000; // 10 seconds
         const startTime = Date.now();
-        
+
         while (Date.now() - startTime < maxWaitTime) {
           try {
             if (this.rooAdapter.isReady()) {
@@ -227,7 +227,7 @@ export class ExtensionController extends EventEmitter {
           }
           await new Promise((r) => setTimeout(r, 500));
         }
-        
+
         if (!this.rooAdapter.isActive) {
           throw new Error(
             'No active extension found. This may be due to missing installations or activation issues.'
@@ -301,7 +301,7 @@ export class ExtensionController extends EventEmitter {
     if (this.ws) {
       this.ws.close();
     }
-    
+
     // Clear reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
@@ -363,22 +363,27 @@ export class ExtensionController extends EventEmitter {
     return this.activeTaskListeners.size;
   }
 
-  public connectToWSServer(port: number): void {
+  connectToWSServer(isReconnect: boolean = false): void {
     try {
-      logger.info(`Attempting to connect to WebSocket server on port ${port}`);
+
+      const wsUrl = this.currentConfig.wsUrl;
+
+      logger.info(`Attempting to connect to WebSocket server on ${wsUrl}`);
 
       // Close existing connection if any
       if (this.ws) {
         this.ws.close();
       }
-      
-      // Reset reconnection attempts for manual connection
-      this.resetReconnectAttempts();
 
-      const wsUrl = this.currentConfig.wsUrl;
+      // Reset reconnection attempts for manual connection
+      if (!isReconnect) {
+        this.resetReconnectAttempts();
+      }
+
+
 
       // establish a connection to the websocket server
-      this.ws = new WebSocket(`ws://localhost:${port}`);
+      this.ws = new WebSocket(wsUrl);
       if (!this.currentAgentId) {
         throw new Error(
           'Controller not properly initialized - missing agentId'
@@ -387,8 +392,8 @@ export class ExtensionController extends EventEmitter {
       const agentId = this.currentAgentId;
 
       this.ws.onopen = () => {
-        logger.info(`Connected to WebSocket server on port ${port}`);
-        
+        logger.info(`Connected to WebSocket server on ${wsUrl}`);
+
         // Reset reconnection attempts on successful connection
         this.resetReconnectAttempts();
 
@@ -635,9 +640,9 @@ export class ExtensionController extends EventEmitter {
                 const clientTaskId = message.data?.taskId as string | undefined;
                 const profile = message.data?.profile as string | undefined;
                 const adapter = this.getRooAdapter();
-                
+
                 logger.info(`Processing CreateTask message: text="${text}", clientTaskId="${clientTaskId}", profile="${profile}"`);
-                
+                logger.info('Adapter', adapter?.isActive, adapter?.isReady());
                 if (text && adapter) {
                   // Ensure adapter is initialized and ready
                   if (!adapter.isActive) {
@@ -645,7 +650,7 @@ export class ExtensionController extends EventEmitter {
                       'Adapter not active, initializing before starting task'
                     );
                     await adapter.initialize();
-                    
+
                     // Wait a bit for the extension to fully activate
                     await new Promise((r) => setTimeout(r, 1000));
                   }
@@ -653,7 +658,7 @@ export class ExtensionController extends EventEmitter {
                   // Wait for RooCode API readiness with timeout
                   const waitStart = Date.now();
                   const waitTimeoutMs = 10000; // Increased timeout to 10 seconds
-                  
+
                   while (Date.now() - waitStart < waitTimeoutMs) {
                     try {
                       if (adapter.isReady()) break;
@@ -663,7 +668,11 @@ export class ExtensionController extends EventEmitter {
                     await new Promise((r) => setTimeout(r, 200));
                   }
 
+                  logger.info('Adapter', adapter?.isActive, adapter?.isReady());
+
                   if (!adapter.isReady()) {
+                    logger.info('RooCode API not ready after 10 seconds');
+                    /*
                     const response: Message = {
                       type: EMessageFromAgent.TaskStartedResponse,
                       source: ConnectionSource.Agent,
@@ -677,12 +686,13 @@ export class ExtensionController extends EventEmitter {
                     };
                     this.ws?.send(JSON.stringify(response));
                     break;
+                    */
                   }
 
                   // Start task via RooCode adapter to obtain the concrete taskId from TaskCreated event
                   // Note: adapter.startNewTask returns an AsyncGenerator (event stream), not an ID
                   let agentTaskId: string | undefined = undefined;
-                  
+
                   try {
                     const taskGenerator = adapter.startNewTask({
                       workspacePath: this.workspacePath,
@@ -690,17 +700,17 @@ export class ExtensionController extends EventEmitter {
                       configuration: createAutoApprovalTaskConfig(),
                       ...(profile ? { profile } : {}),
                     });
-                    
+
                     // Consume the first event to get the taskId from TaskCreated event
                     const firstEvent = await taskGenerator.next();
-                    
+
                     if (firstEvent.value && firstEvent.value.name === RooCodeEventName.TaskCreated) {
                       agentTaskId = firstEvent.value.data?.taskId;
                       logger.info(`Task created with ID: ${agentTaskId}`);
                     } else {
                       logger.warn(`First event was not TaskCreated:`, firstEvent.value);
                     }
-                    
+
                     // Continue consuming events in the background
                     this.consumeTaskEvents(taskGenerator, agentTaskId || 'unknown');
                   } catch (error) {
@@ -794,6 +804,61 @@ export class ExtensionController extends EventEmitter {
               break;
             }
 
+            case EMessageFromUI.GetConfiguration: {
+              try {
+                const adapter = this.getRooAdapter();
+                if (adapter?.isActive) {
+                  const rooCodeConfiguration = adapter.getConfiguration();
+                  const response: Message = {
+                    type: EMessageFromAgent.RooCodeConfiguration,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { rooCodeConfiguration },
+                    timestamp: Date.now(),
+                  };
+                  this.ws?.send(JSON.stringify(response));
+                } else {
+                  // Send empty response if adapter not ready
+                  const response: Message = {
+                    type: EMessageFromAgent.RooCodeConfiguration,
+                    source: ConnectionSource.Agent,
+                    agent: { id: agentId },
+                    data: { rooCodeConfiguration: undefined },
+                    timestamp: Date.now(),
+                  };
+                  this.ws?.send(JSON.stringify(response));
+                }
+              } catch (err) {
+                logger.warn('Failed to get active profile:', err);
+                // Send empty response on error
+                const response: Message = {
+                  type: EMessageFromAgent.ActiveProfileResponse,
+                  source: ConnectionSource.Agent,
+                  agent: { id: agentId },
+                  data: { activeProfile: undefined },
+                  timestamp: Date.now(),
+                };
+                this.ws?.send(JSON.stringify(response));
+              }
+              break;
+            }
+
+            case EMessageFromUI.SetConfiguration: {
+              try {
+                const configuration = message.data?.configuration as RooCodeSettings;
+                const adapter = this.getRooAdapter();
+                if (adapter) {
+                  adapter.setConfiguration(configuration);
+                } else {
+                  logger.error(`No RooCode adapter found`);
+                }
+
+                logger.info(`Configuration updated: ${JSON.stringify(configuration)}`);
+              } catch (error) {
+                logger.error(`Error setting configuration: ${error}`);
+              }
+              break;
+            }
             default:
               logger.info(
                 `Received message from WebSocket server: ${messageData} which is not handled`
@@ -810,29 +875,25 @@ export class ExtensionController extends EventEmitter {
         logger.info(
           `Disconnected from WebSocket server - Code: ${event.code}, Reason: ${event.reason}`
         );
-        
+
         // Attempt to reconnect if not a normal closure
         if (event.code !== 1000 && this.reconnectAttempts < this.maxReconnectAttempts) {
-          this.scheduleReconnect(port);
+          this.scheduleReconnect();
         }
       };
 
       this.ws.onerror = (error) => {
-        logger.error(`WebSocket error:`, error);
+        logger.error(`WebSocket error:`, JSON.stringify(error));
       };
     } catch (error) {
       logger.error(`Error connecting to WebSocket server:`, error);
     }
   }
 
-  public getWsPort(): number {
-    return this.currentConfig.wsPort;
-  }
-
   /**
    * Schedule a reconnection attempt
    */
-  private scheduleReconnect(port: number): void {
+  private scheduleReconnect(): void {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
     }
@@ -844,7 +905,7 @@ export class ExtensionController extends EventEmitter {
 
     this.reconnectTimeout = setTimeout(() => {
       logger.info(`Attempting reconnection ${this.reconnectAttempts}/${this.maxReconnectAttempts}`);
-      this.connectToWSServer(port);
+      this.connectToWSServer(true);
     }, delay);
   }
 
@@ -945,28 +1006,28 @@ export class ExtensionController extends EventEmitter {
     }
 
     const value = parameters[paramName];
-    
+
     // If it's already a string, return it
     if (typeof value === 'string') {
       return value;
     }
-    
+
     // If it's an object, try to extract meaningful data
     if (typeof value === 'object' && value !== null) {
       // If it's an empty object, return null
       if (Object.keys(value).length === 0) {
         return null;
       }
-      
+
       // Try to find a taskId-like property in the object
       if (value.taskId && typeof value.taskId === 'string') {
         return value.taskId;
       }
-      
+
       // If no meaningful data, stringify the object
       return JSON.stringify(value);
     }
-    
+
     // Convert other types to string
     return String(value);
   }

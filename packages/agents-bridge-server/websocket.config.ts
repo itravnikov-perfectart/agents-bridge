@@ -208,6 +208,8 @@ const handleUIConnection = (
     case EMessageFromUI.GetActiveProfile:
     case EMessageFromUI.GetProfiles:
     case EMessageFromUI.GetActiveTaskIds:
+    case EMessageFromUI.GetConfiguration:
+    case EMessageFromUI.SetConfiguration:
     case EMessageFromUI.CreateTask:
     case EMessageFromUI.SendMessageToTask:
     case EMessageFromUI.RooCodeCommand:
@@ -406,6 +408,7 @@ const handleAgentConnection = (
     case EMessageFromAgent.ActiveTaskIdsResponse:
     case EMessageFromAgent.AgentResponse:
     case EMessageFromAgent.RooCodeCommandResponse:
+    case EMessageFromAgent.RooCodeConfiguration:
     case EMessageFromAgent.RooCodeEvent:
       // Forward RooCode response to all UI clients
       const agentResponse = agentManager.getAgent(agentId);

@@ -1,11 +1,13 @@
 import React, { useState } from 'react';
-import { MessageCircle, Plus, Loader2, ChevronRight, FileText } from 'lucide-react';
+import { MessageCircle, Plus, Loader2, ChevronRight, FileText, Settings } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWebSocketConnection } from '../providers/connection.provider';
 import { getMessagesByTaskId } from '../queries/useMessages';
 import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
 import { cn } from '../utils/cn';
 import { v4 as uuidv4 } from 'uuid';
+import { useAgentConfiguration } from '../queries/useAgentConfiguration';
+import { ConfigurationModal } from './ConfigurationModal';
 
 interface ChatListProps {
   selectedAgent: string | null;
@@ -21,11 +23,13 @@ export function ChatList({
   const [view, setView] = useState<'active' | 'history'>('active');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
+  const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
   
-  const { onLoadingStateChange, getTaskHistory, getActiveTaskIds, getTaskDetails } = useWebSocketConnection();
+  const { onLoadingStateChange, getTaskHistory, getActiveTaskIds, getTaskDetails, getAgentConfiguration } = useWebSocketConnection();
 
   const queryClient = useQueryClient();
   const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const { data: agentConfig } = useAgentConfiguration(selectedAgent || '');
   
   // Group tasks by hierarchy
   const groupTasksByHierarchy = (tasks: any[]) => {
@@ -168,6 +172,12 @@ export function ChatList({
     }
   };
 
+  const handleOpenConfigModal = () => {
+    if (selectedAgent) {
+      setIsConfigModalOpen(true);
+    }
+  };
+
 
 
   // Fetch both active tasks and task history when agent is selected
@@ -175,6 +185,7 @@ export function ChatList({
     if (selectedAgent) {
       getActiveTaskIds(selectedAgent);
       getTaskHistory(selectedAgent);
+      getAgentConfiguration(selectedAgent);
     }
   }, [selectedAgent, getActiveTaskIds, getTaskHistory]);
 
@@ -212,6 +223,7 @@ export function ChatList({
     return unsubscribe;
   }, [onLoadingStateChange]);
 
+
   if (!selectedAgent) {
     return (
       <div className="flex-1 flex items-center justify-center bg-background">
@@ -229,14 +241,23 @@ export function ChatList({
     <div className="w-full h-full flex flex-col">
       {/* Header with New Chat Button */}
       <div className="p-4 border-b border-border bg-background">
-        <button
-          onClick={handleCreateNewChat}
-          disabled={isCreatingTask}
-          className="w-full inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed mb-3"
-        >
-          <Plus className="h-4 w-4" />
-          {isCreatingTask ? 'Creating...' : 'New Chat'}
-        </button>
+        <div className="flex gap-2 mb-3">
+          <button
+            onClick={handleCreateNewChat}
+            disabled={isCreatingTask}
+            className="flex-1 inline-flex items-center justify-center gap-2 px-3 py-2 text-sm bg-primary text-primary-foreground hover:bg-primary/90 rounded-md transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <Plus className="h-4 w-4" />
+            {isCreatingTask ? 'Creating...' : 'New Chat'}
+          </button>
+          <button
+            onClick={handleOpenConfigModal}
+            className="px-3 py-2 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors inline-flex items-center gap-2"
+            title="Update Configuration"
+          >
+            <Settings className="h-4 w-4" />
+          </button>
+        </div>
 
         {/* Active/History toggle */}
         <div className="flex items-center gap-1">
@@ -318,6 +339,14 @@ export function ChatList({
         })
         )}
       </div>
+      
+      {/* Configuration Modal */}
+      <ConfigurationModal
+        isOpen={isConfigModalOpen}
+        onClose={() => setIsConfigModalOpen(false)}
+        agentId={selectedAgent}
+        initialConfig={agentConfig}
+      />
     </div>
   );
 }

@@ -28,7 +28,8 @@ import {
 } from '../queries/useTasks';
 import { useAddProfiles, useUpdateActiveProfile } from '../queries/useProfiles';
 import { useQueryClient } from '@tanstack/react-query';
-import { RooCodeEventName } from '@roo-code/types';
+import { RooCodeEventName, RooCodeSettings } from '@roo-code/types';
+import { useAddAgentConfiguration } from '../queries/useAgentConfiguration';
 
 export interface WebSocketContextType {
   isConnected: boolean;
@@ -43,6 +44,8 @@ export interface WebSocketContextType {
   getActiveTaskIds: (agentId: string) => void;
   getProfiles: (agentId: string) => void;
   getActiveProfile: (agentId: string) => void;
+  getAgentConfiguration: (agentId: string) => void;
+  sendAgentConfiguration: (agentId: string, configuration: RooCodeSettings) => void;
   getTaskHistory: (agentId: string) => void;
   getTaskDetails: (agentId: string, taskId: string) => void;
   startNewTask: (
@@ -101,6 +104,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const addTasksMutation = useAddTasks();
   const addProfilesMutation = useAddProfiles();
   const updateActiveProfileMutation = useUpdateActiveProfile();
+    const addAgentConfigurationMutation = useAddAgentConfiguration();
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
@@ -110,6 +114,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   );
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const requestedActiveProfileRef = useRef<Set<string>>(new Set());
+  const requestedAgentConfigurationRef = useRef<Set<string>>(new Set());
   const requestedTaskHistoryRef = useRef<Set<string>>(new Set());
   const processedMessageTimestamps = useRef<Set<string>>(new Set());
 
@@ -855,6 +860,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       case EMessageFromAgent.ProfilesResponse:
         addProfilesMutation.mutate(message.data?.profiles || []);
         break;
+
+      case EMessageFromAgent.RooCodeConfiguration:
+        addAgentConfigurationMutation.mutate({ id: message.agent?.id || '', configuration: message.data?.rooCodeConfiguration || {} });
+        break;
       case EMessageFromAgent.RooCodeCommandResponse: {
         const cmd = message.data?.command as string | undefined;
         const success = !!message.data?.success;
@@ -1309,6 +1318,40 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [sendMessage]
   );
 
+  const getAgentConfiguration = useCallback(
+    async (agentId: string) => {
+      if (requestedAgentConfigurationRef.current.has(agentId)) {
+        return; // Already requested for this agent
+      }
+      requestedAgentConfigurationRef.current.add(agentId);
+
+      const message: Message = {
+        type: EMessageFromUI.GetConfiguration,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+      };
+      console.log('🔄 Getting agent configuration for:', agentId, message);
+
+      sendMessage(message);
+    },
+    [sendMessage]
+  );
+
+  const sendAgentConfiguration = useCallback(
+    async (agentId: string, configuration: RooCodeSettings) => {
+      const wsMessage: Message = {
+        type: EMessageFromUI.SetConfiguration,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: {
+          configuration
+        },
+      };
+      sendMessage(wsMessage);
+    },
+    [sendMessage]
+  );
+
   const getTaskHistory = useCallback(
     async (agentId: string) => {
       if (requestedTaskHistoryRef.current.has(agentId)) {
@@ -1523,6 +1566,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     onConnectionStateChange,
     onLoadingStateChange,
     onTaskIdChange,
+    getAgentConfiguration,
+    sendAgentConfiguration
   };
 
   return React.createElement(

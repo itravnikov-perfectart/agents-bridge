@@ -26,13 +26,7 @@ export async function activate(context: vscode.ExtensionContext) {
     await extensionController.initialize();
     
     // Auto-connect to WebSocket server after initialization
-    const wsPort = extensionController.getWsPort();
-    if (wsPort) {
-      logger.info(`Auto-connecting to WebSocket server on port ${wsPort}`);
-      extensionController.connectToWSServer(wsPort);
-    } else {
-      logger.warn("No WebSocket port configured, skipping auto-connection");
-    }
+    extensionController.connectToWSServer();
   } catch (err) {
     logger.error("Controller initialization failed:", err);
   }
@@ -121,24 +115,14 @@ export async function activate(context: vscode.ExtensionContext) {
 
     vscode.commands.registerCommand(Commands.ConnectToWSServer, async () => {
       try {
-        const port = await vscode.window.showInputBox({
-          prompt: "Enter WebSocket server port",
-          placeHolder: "8080",
-          value: "8080",
-        });
-
-        if (!port) {
-          return;
-        }
-
         if (!extensionController) {
           throw new Error("Extension controller not initialized");
         }
 
         // Connect the controller to the WebSocket server
-        extensionController.connectToWSServer(parseInt(port, 10));
+        extensionController.connectToWSServer();
         vscode.window.showInformationMessage(
-          `Connecting to WebSocket server on port ${port}...`
+          `Connecting to WebSocket server...`
         );
       } catch (error) {
         logger.error("Error connecting to WebSocket server:", error);
@@ -153,16 +137,10 @@ export async function activate(context: vscode.ExtensionContext) {
         if (!extensionController) {
           throw new Error("Extension controller not initialized");
         }
-
-        const wsPort = extensionController.getWsPort();
-        if (wsPort) {
-          extensionController.connectToWSServer(wsPort);
-          vscode.window.showInformationMessage(
-            `Reconnecting to WebSocket server on port ${wsPort}...`
-          );
-        } else {
-          vscode.window.showWarningMessage("No WebSocket port configured");
-        }
+        extensionController.connectToWSServer();
+        vscode.window.showInformationMessage(
+          `Reconnecting to WebSocket server on ...`
+        );
       } catch (error) {
         logger.error("Error reconnecting to WebSocket server:", error);
         vscode.window.showErrorMessage(

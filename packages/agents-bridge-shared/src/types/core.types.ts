@@ -39,6 +39,7 @@ export enum EMessageFromUI {
   Unregister = "unregister",
   SendToRooCode = "sendToRooCode",
   RooCodeCommand = "rooCodeCommand",
+  GetConfiguration = "getConfiguration",
 }
 
 export enum EMessageFromAgent {

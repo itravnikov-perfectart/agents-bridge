@@ -42,6 +42,7 @@ export enum EMessageFromUI {
   GetProfiles = "getProfiles",
   GetActiveProfile = "getActiveProfile",
   SetConfiguration = "setConfiguration",
+  GetConfiguration = "getConfiguration",
   Register = "register",
   Unregister = "unregister",
   SendToRooCode = "sendToRooCode",
