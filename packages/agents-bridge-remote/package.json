@@ -1,0 +1,46 @@
+{
+  "name": "agents-bridge-remote",
+  "description": "Docker образ с VS Code, Roo Code extension и Agents Bridge extension для удаленной разработки",
+  "version": "0.0.1",
+  "scripts": {
+    "build": "./scripts/build.sh",
+    "start": "./scripts/run.sh",
+    "build:no-cache": "./scripts/build.sh --no-cache",
+    "clean": "docker rmi agents-bridge-remote || true",
+    "logs": "docker logs agents-bridge-vscode",
+    "shell": "docker exec -it agents-bridge-vscode bash",
+    "stop": "docker stop agents-bridge-vscode || true"
+  },
+  "keywords": [
+    "vscode",
+    "docker",
+    "roo-code",
+    "agents-bridge",
+    "remote-development"
+  ],
+  "type": "module",
+  "exports": "./src/index.ts",
+  "author": "Agents Bridge Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/itravnikov-perfectart/agents-bridge.git",
+    "directory": "packages/agents-bridge-remote"
+  },
+  "engines": {
+    "node": ">=18.0.0",
+    "docker": ">=20.0.0"
+  },
+  "dependencies": {
+    "execa": "^9.6.0",
+    "tsx": "^4.19.3",
+    "cmd-ts": "^0.13.0",
+    "ws": "^8.14.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/ws": "^8.5.10",
+    "typescript": "^5.0.0",
+    "path": "^0.12.7"
+  }
+}

@@ -3,3 +3,8 @@ dist
 node_modules
 .vscode-test/
 *.vsix
+/bin
+tsconfig.tsbuildinfo
+template
+build
+.secrets
