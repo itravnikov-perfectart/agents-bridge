@@ -13,7 +13,8 @@
   },
   "dependencies": {
     "zod": "^3.25.76",
-    "uuid": "^9.0.1"
+    "uuid": "^9.0.1",
+    "@roo-code/types": "^1.40.0"
   },
   "devDependencies": {
     "@types/uuid": "^10.0.0",

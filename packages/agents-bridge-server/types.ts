@@ -1,22 +1,38 @@
-import { EConnectionSource, EMessageFromAgent, EMessageFromServer, EMessageFromUI, ESystemMessage } from "./message.enum";
-import { RooCodeEventName, TaskEvent } from "@roo-code/types";
+import { TaskEvent } from '@roo-code/types';
+import {
+  EConnectionSource,
+  EMessageFromAgent,
+  EMessageFromServer,
+  EMessageFromUI,
+  ESystemMessage,
+} from './message.enum';
 
-export { EConnectionSource, EMessageFromAgent, EMessageFromServer, EMessageFromUI, ESystemMessage } from "./message.enum";
+export {
+  EConnectionSource,
+  EMessageFromAgent,
+  EMessageFromServer,
+  EMessageFromUI,
+  ESystemMessage
+} from './message.enum';
 
 export interface Message {
-  type: EMessageFromAgent | EMessageFromUI | EMessageFromServer | ESystemMessage;
+  type:
+    | EMessageFromAgent
+    | EMessageFromUI
+    | EMessageFromServer
+    | ESystemMessage;
   source: EConnectionSource;
   timestamp?: number;
   agent?: {
     id: string;
     workspacePath?: string;
-  }
+  };
   data?: Record<string, any>;
   event?: TaskEvent;
 }
 
 export interface AuthMessage {
-  type: "authenticate";
+  type: 'authenticate';
   token: string;
 }
 
@@ -40,12 +56,12 @@ export interface ProcessStatus {
   containerId?: string;
   jobId?: string;
   status:
-    | "unknown"
-    | "created"
-    | "running"
-    | "stopped"
-    | "failed"
-    | "completed";
+    | 'unknown'
+    | 'created'
+    | 'running'
+    | 'stopped'
+    | 'failed'
+    | 'completed';
   exitCode?: number;
   memoryUsage?: number;
   cpuUsage?: number;
@@ -126,53 +142,6 @@ export interface RedisConfig {
 export interface WorkerConfig {
   concurrency: number;
   timeout: number;
-}
-
-export interface IMessageFromAgent {
-  messageType: EMessageFromAgent;
-  connectionType: EConnectionSource;
-  agentId: string;
-  details: {
-    extensionId?: string;
-    isReady?: boolean;
-    lastHeartbeat?: number;
-    activeTaskIds?: string[];
-    configuration?: any;
-    profiles?: string[];
-    activeProfile?: string;
-    taskHistory?: any[];
-    event?: any;
-    eventName?: string;
-    eventData?: any[];
-    timestamp?: number;
-    [key: string]: any;
-  };
-}
-
-export interface IMessageFromServer {
-  messageType: EMessageFromServer;
-  details?: {
-    agents?: any[];
-    message?: string;
-    command?: string;
-    parameters?: any;
-    extensionId?: string;
-    task?: any;
-    timestamp?: number;
-    [key: string]: any;
-  };
-  timestamp?: number;
-}
-
-export interface IMessageFromUI {
-  messageType: EMessageFromUI;
-  connectionType: EConnectionSource;
-  details?: {
-    agentId?: string;
-    message?: string;
-    options?: any;
-    [key: string]: any;
-  };
 }
 
 export interface TMessageToServer {

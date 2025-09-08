@@ -12,7 +12,6 @@
   "references": [
     { "path": "./packages/agents-bridge-shared" },
     { "path": "./packages/agents-bridge-extension" },
-    { "path": "./packages/agents-bridge-server" },
-    { "path": "./packages/agents-bridge-ui" }
+    { "path": "./packages/agents-bridge-server" }
   ]
 }

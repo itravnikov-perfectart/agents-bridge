@@ -103,7 +103,7 @@ export class AgentManager {
           };
           agent.socket.send(JSON.stringify(messageToSend));
           
-          logger.info(`Ping sent to agent ${id} at ${now}`);
+          // Removed ping logging to reduce noise - only log connect/disconnect events
         } catch (error) {
           logger.error(`Failed to send ping to agent ${id}:`, error);
           this.agents.delete(id);
