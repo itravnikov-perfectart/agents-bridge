@@ -63,6 +63,16 @@ export interface WebSocketContextType {
     toolData?: any
   ) => void;
 
+  // Remote agents methods
+  createRemoteAgent: (workspacePath?: string) => void;
+  stopRemoteAgent: (agentId: string) => void;
+  getRemoteAgents: () => void;
+  cloneRepository: (agentId: string, repoUrl: string, gitToken?: string) => void;
+  
+  // Event handlers for remote agents
+  onRemoteAgentCreated: (handler: (container: any) => void) => () => void;
+  onRemoteAgentError: (handler: (error: string, action: string) => void) => () => void;
+
   onConnectionStateChange: (
     handler: (isConnected: boolean) => void
   ) => () => void;
@@ -160,14 +170,42 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       case EMessageFromServer.AgentList:
         updateAgentsMutation.mutate(message.data?.agents || []);
         (message.data?.agents || []).forEach((agent: any) => {
-          if (agent?.id) getActiveTaskIds(agent.id);
+          if (agent?.id) {
+            getActiveTaskIds(agent.id);
+          }
         });
         break;
       case EMessageFromServer.AgentUpdate:
         updateAgentsMutation.mutate(message.data?.agents || []);
         (message.data?.agents || []).forEach((agent: any) => {
-          if (agent?.id) getActiveTaskIds(agent.id);
+          if (agent?.id) {
+            getActiveTaskIds(agent.id);
+          }
         });
+        break;
+      case EMessageFromServer.RemoteAgentCreated:
+        console.log('🎉 Remote agent created:', message.data?.container);
+        triggerRemoteAgentCreated(message.data?.container);
+        break;
+      case EMessageFromServer.RemoteAgentStopped:
+        console.log('🛑 Remote agent stopped:', message.data?.agentId);
+        // You can add notifications or other UI feedback here
+        break;
+      case EMessageFromServer.RemoteAgentsList:
+        console.log('📋 Remote agents list:', message.data?.remoteAgents);
+        // You can handle remote agents list here if needed
+        break;
+      case EMessageFromServer.RemoteAgentError:
+        console.error('❌ Remote agent error:', message.data?.error);
+        triggerRemoteAgentError(message.data?.error, message.data?.action);
+        break;
+      case EMessageFromServer.RepoCloned:
+        console.log('✅ Repository cloned:', message.data?.repoUrl);
+        // You can add success notifications here
+        break;
+      case EMessageFromServer.RepoCloneError:
+        console.error('❌ Repository clone error:', message.data?.error);
+        // You can add error handling/notifications here
         break;
     }
   }, []);
@@ -1466,6 +1504,62 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [sendMessage]
   );
 
+  const createRemoteAgent = useCallback(
+    async (workspacePath?: string) => {
+      const message: Message = {
+        type: EMessageFromUI.CreateRemoteAgent,
+        source: ConnectionSource.UI,
+        data: { workspacePath },
+        timestamp: Date.now(),
+      };
+
+      sendMessage(message);
+    },
+    [sendMessage]
+  );
+
+  const stopRemoteAgent = useCallback(
+    async (agentId: string) => {
+      const message: Message = {
+        type: EMessageFromUI.StopRemoteAgent,
+        source: ConnectionSource.UI,
+        data: { agentId },
+        timestamp: Date.now(),
+      };
+
+      sendMessage(message);
+    },
+    [sendMessage]
+  );
+
+  const getRemoteAgents = useCallback(
+    async () => {
+      const message: Message = {
+        type: EMessageFromUI.GetRemoteAgents,
+        source: ConnectionSource.UI,
+        timestamp: Date.now(),
+      };
+
+      sendMessage(message);
+    },
+    [sendMessage]
+  );
+
+  const cloneRepository = useCallback(
+    async (agentId: string, repoUrl: string, gitToken?: string) => {
+      const message: Message = {
+        type: EMessageFromUI.CloneRepo,
+        source: ConnectionSource.UI,
+        agent: { id: agentId },
+        data: { repoUrl, gitToken },
+        timestamp: Date.now(),
+      };
+
+      sendMessage(message);
+    },
+    [sendMessage]
+  );
+
   const onConnectionStateChange = useCallback(
     (handler: (isConnected: boolean) => void) => {
       connectionHandlersRef.current.add(handler);
@@ -1481,6 +1575,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   >(new Set());
   const taskIdChangeHandlersRef = useRef<
     Set<(oldTaskId: string, newTaskId: string) => void>
+  >(new Set());
+  
+  const remoteAgentCreatedHandlersRef = useRef<
+    Set<(container: any) => void>
+  >(new Set());
+  
+  const remoteAgentErrorHandlersRef = useRef<
+    Set<(error: string, action: string) => void>
   >(new Set());
 
   const onLoadingStateChange = useCallback(
@@ -1546,6 +1648,52 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     };
   }, []);
 
+  const onRemoteAgentCreated = useCallback(
+    (handler: (container: any) => void) => {
+      remoteAgentCreatedHandlersRef.current.add(handler);
+      return () => {
+        remoteAgentCreatedHandlersRef.current.delete(handler);
+      };
+    },
+    []
+  );
+
+  const onRemoteAgentError = useCallback(
+    (handler: (error: string, action: string) => void) => {
+      remoteAgentErrorHandlersRef.current.add(handler);
+      return () => {
+        remoteAgentErrorHandlersRef.current.delete(handler);
+      };
+    },
+    []
+  );
+
+  const triggerRemoteAgentCreated = useCallback(
+    (container: any) => {
+      remoteAgentCreatedHandlersRef.current.forEach((handler) => {
+        try {
+          handler(container);
+        } catch (error) {
+          console.error('Error in remote agent created handler:', error);
+        }
+      });
+    },
+    []
+  );
+
+  const triggerRemoteAgentError = useCallback(
+    (error: string, action: string) => {
+      remoteAgentErrorHandlersRef.current.forEach((handler) => {
+        try {
+          handler(error, action);
+        } catch (error) {
+          console.error('Error in remote agent error handler:', error);
+        }
+      });
+    },
+    []
+  );
+
   // Значение контекста
   const contextValue: WebSocketContextType = {
     isConnected,
@@ -1563,9 +1711,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     sendMessageToTask,
     resumeTask,
     sendToolApprovalResponse,
+    createRemoteAgent,
+    stopRemoteAgent,
+    getRemoteAgents,
+    cloneRepository,
     onConnectionStateChange,
     onLoadingStateChange,
     onTaskIdChange,
+    onRemoteAgentCreated,
+    onRemoteAgentError,
     getAgentConfiguration,
     sendAgentConfiguration
   };

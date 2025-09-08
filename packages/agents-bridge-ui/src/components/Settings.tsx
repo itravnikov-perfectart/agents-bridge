@@ -13,6 +13,7 @@ interface SettingsData {
   showTimer: boolean;
   retryOnError: boolean;
   maxRetries: number;
+  githubToken: string;
 }
 
 const DEFAULT_SETTINGS: SettingsData = {
@@ -21,6 +22,7 @@ const DEFAULT_SETTINGS: SettingsData = {
   showTimer: true,
   retryOnError: true,
   maxRetries: 3,
+  githubToken: '',
 };
 
 export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
@@ -53,7 +55,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     setHasChanges(true);
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
@@ -170,6 +174,31 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
               </div>
             )}
           </div>
+
+          {/* GitHub Integration Settings */}
+          <div className="space-y-3">
+            <h3 className="text-sm font-medium text-foreground">GitHub Integration</h3>
+            
+            <div className="space-y-2">
+              <label className="text-sm font-medium">GitHub Token</label>
+              <p className="text-xs text-muted-foreground">
+                Personal access token for GitHub API access. Used for repository operations and code analysis.
+              </p>
+              <textarea
+                value={settings.githubToken}
+                onChange={(e) => updateSetting('githubToken', e.target.value)}
+                placeholder="ghp_xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"
+                rows={3}
+                className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring resize-none font-mono"
+              />
+              {settings.githubToken && (
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-2 h-2 bg-green-500 rounded-full"></div>
+                  <span className="text-green-600">Token configured</span>
+                </div>
+              )}
+            </div>
+          </div>
         </div>
 
         {/* Footer */}
@@ -222,4 +251,10 @@ export const useSettings = () => {
   };
 
   return { settings, updateSettings };
+};
+
+// Hook to get GitHub token specifically
+export const useGitHubToken = () => {
+  const { settings } = useSettings();
+  return settings.githubToken;
 };

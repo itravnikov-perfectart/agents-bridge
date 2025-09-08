@@ -9,7 +9,7 @@ import { WebSocket } from 'ws';
 class ContainerManager {
   private isShuttingDown = false;
   private logStream = createWriteStream('/tmp/container.log', { flags: 'a' });
-  private workspaceDir = path.resolve("/tmp", "task-workspace")
+  private workspaceDir = path.resolve("/workspace")
 
   constructor() {
     this.log('🚀 Container Manager starting...');

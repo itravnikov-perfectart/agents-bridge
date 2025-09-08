@@ -1,5 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
 import { AgentManager } from "./agent-manager";
+import { DockerManager } from "./docker-manager";
 import { logger } from "./serverLogger";
 
 import {
@@ -39,6 +40,7 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
   });
 
   const agentManager = new AgentManager(pingInterval, 5); // 5x timeout multiplier
+  const dockerManager = new DockerManager();
   const uiClients = new Set<WebSocket>(); // Track UI clients separately
 
   const healthCheckInterval = setInterval(
@@ -62,7 +64,9 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
 
         if (source === EConnectionSource.UI) {
           uiClients.add(socket);
-          handleUIConnection(message, socket, agentManager);
+          handleUIConnection(message, socket, agentManager, dockerManager, uiClients).catch(error => {
+            logger.error('Error handling UI connection:', error);
+          });
         } else if (source === EConnectionSource.Agent) {
           agentId = message.agent?.id;
 
@@ -166,7 +170,9 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
     close: () =>
       new Promise<void>((resolve) => {
         clearInterval(healthCheckInterval);
-        wss.close(() => resolve());
+        dockerManager.cleanup().finally(() => {
+          wss.close(() => resolve());
+        });
       }),
   };
 };
@@ -175,10 +181,12 @@ export type WebSocketServerInstance = ReturnType<typeof createWebSocketServer>;
 
 
 
-const handleUIConnection = (
+const handleUIConnection = async (
   message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
+  dockerManager: DockerManager,
+  uiClients: Set<WebSocket>,
 ) => {
   const { type } = message;
 
@@ -192,6 +200,7 @@ const handleUIConnection = (
           connectedAt: agent.connectedAt,
           gracePeriod: agent.gracePeriod,
           workspacePath: agent.workspacePath,
+          isRemote: agent.isRemote,
         }),
       );
 
@@ -213,6 +222,7 @@ const handleUIConnection = (
     case EMessageFromUI.CreateTask:
     case EMessageFromUI.SendMessageToTask:
     case EMessageFromUI.RooCodeCommand:
+    case EMessageFromUI.CloneRepo:
       const agentId = message.agent?.id;
       if (!agentId) {
         logger.warn(`Agent ID not found for RooCode message`);
@@ -233,6 +243,100 @@ const handleUIConnection = (
       logger.info(
         `Forwarded message to RooCode via agent ${agentId}: ${JSON.stringify(message.data)}`,
       );
+      break;
+    
+    case EMessageFromUI.CreateRemoteAgent:
+      try {
+        const { workspacePath } = message.data || {};
+        const agentId = `remote-${Date.now()}`;
+        const container = await dockerManager.createRemoteAgent(agentId, workspacePath);
+        
+        const responseMessage: Message = {
+          source: EConnectionSource.Server,
+          type: EMessageFromServer.RemoteAgentCreated,
+          data: { container },
+          timestamp: Date.now(),
+        };
+        
+        socket.send(JSON.stringify(responseMessage));
+        
+        // Broadcast to all UI clients
+        const broadcastData = JSON.stringify(responseMessage);
+        uiClients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN && client !== socket) {
+            client.send(broadcastData);
+          }
+        });
+        
+        logger.info(`Remote agent container creation requested: ${agentId}`);
+      } catch (error) {
+        logger.error('Failed to create remote agent:', error);
+        const errorMessage: Message = {
+          source: EConnectionSource.Server,
+          type: EMessageFromServer.RemoteAgentError,
+          data: { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            action: 'create'
+          },
+          timestamp: Date.now(),
+        };
+        socket.send(JSON.stringify(errorMessage));
+      }
+      break;
+      
+    case EMessageFromUI.StopRemoteAgent:
+      try {
+        const { agentId: stopAgentId } = message.data || {};
+        if (!stopAgentId) {
+          throw new Error('Agent ID is required');
+        }
+        
+        const success = await dockerManager.stopRemoteAgent(stopAgentId);
+        const responseMessage: Message = {
+          source: EConnectionSource.Server,
+          type: EMessageFromServer.RemoteAgentStopped,
+          data: { 
+            agentId: stopAgentId,
+            success 
+          },
+          timestamp: Date.now(),
+        };
+        
+        socket.send(JSON.stringify(responseMessage));
+        
+        // Broadcast to all UI clients
+        const broadcastData = JSON.stringify(responseMessage);
+        uiClients.forEach((client) => {
+          if (client.readyState === WebSocket.OPEN && client !== socket) {
+            client.send(broadcastData);
+          }
+        });
+        
+        logger.info(`Remote agent container stop requested: ${stopAgentId}`);
+      } catch (error) {
+        logger.error('Failed to stop remote agent:', error);
+        const errorMessage: Message = {
+          source: EConnectionSource.Server,
+          type: EMessageFromServer.RemoteAgentError,
+          data: { 
+            error: error instanceof Error ? error.message : 'Unknown error',
+            action: 'stop'
+          },
+          timestamp: Date.now(),
+        };
+        socket.send(JSON.stringify(errorMessage));
+      }
+      break;
+      
+    case EMessageFromUI.GetRemoteAgents:
+      const remoteAgents = dockerManager.getRemoteAgents();
+      const remoteAgentsMessage: Message = {
+        source: EConnectionSource.Server,
+        type: EMessageFromServer.RemoteAgentsList,
+        data: { remoteAgents },
+        timestamp: Date.now(),
+      };
+      socket.send(JSON.stringify(remoteAgentsMessage));
       break;
 
 
@@ -301,6 +405,7 @@ const broadcastAgentUpdate = (
       connectedAt: agent.connectedAt,
       gracePeriod: agent.gracePeriod,
       workspacePath: agent.workspacePath,
+      isRemote: agent.isRemote,
     }),
   );
 
@@ -349,10 +454,14 @@ const handleAgentConnection = (
   switch (type) {
     case ESystemMessage.Register:
       // Use the agent's provided ID instead of generating a new one
+      // Determine if this is a remote agent based on ID pattern
+      const isRemoteAgent = agentId.startsWith('remote-');
+      
       const registredAgentId = agentManager.registerAgentWithId(
         agentId, // Use the agent's provided ID
         socket,
         agent?.workspacePath,
+        isRemoteAgent,
       );
       const totalAgentsAfterReg = agentManager.agents.size;
       logger.info(

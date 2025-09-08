@@ -25,6 +25,12 @@ export enum EMessageFromServer {
   RooCodeCommand = "rooCodeCommand",
   CreateTask = "createTask",
   ShutdownContainer = "shutdownContainer",
+  RemoteAgentCreated = "remoteAgentCreated",
+  RemoteAgentStopped = "remoteAgentStopped",
+  RemoteAgentsList = "remoteAgentsList",
+  RemoteAgentError = "remoteAgentError",
+  RepoCloned = "repoCloned",
+  RepoCloneError = "repoCloneError",
 }
 
 export enum EMessageFromUI {
@@ -40,6 +46,10 @@ export enum EMessageFromUI {
   SendToRooCode = "sendToRooCode",
   RooCodeCommand = "rooCodeCommand",
   GetConfiguration = "getConfiguration",
+  CreateRemoteAgent = "createRemoteAgent",
+  StopRemoteAgent = "stopRemoteAgent",
+  GetRemoteAgents = "getRemoteAgents",
+  CloneRepo = "cloneRepo",
 }
 
 export enum EMessageFromAgent {

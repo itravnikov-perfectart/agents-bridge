@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { X } from 'lucide-react';
 import { useAddAgentConfiguration } from '../queries/useAgentConfiguration';
 import { useWebSocketConnection } from '../providers/connection.provider';

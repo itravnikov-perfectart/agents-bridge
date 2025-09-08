@@ -32,6 +32,8 @@ export enum EMessageFromServer {
   RooCodePartial = "rooCodePartial",
   RooCodeCommand = "rooCodeCommand",
   CreateTask = "createTask",
+  RepoCloned = "repoCloned",
+  RepoCloneError = "repoCloneError",
 }
 
 export enum EMessageFromUI {
@@ -47,6 +49,7 @@ export enum EMessageFromUI {
   Unregister = "unregister",
   SendToRooCode = "sendToRooCode",
   RooCodeCommand = "rooCodeCommand",
+  CloneRepo = "cloneRepo",
 }
 
 export enum EMessageFromAgent {

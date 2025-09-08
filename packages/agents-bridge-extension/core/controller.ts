@@ -21,6 +21,9 @@ import {
 
 import { v4 as uuidv4 } from 'uuid';
 import { createAutoApprovalTaskConfig } from './autoApprovalConfig';
+import * as fs from 'fs';
+import * as path from 'path';
+import * as os from 'os';
 
 /**
  * Core controller to manage Cline, RooCode and WQ Maestro extensions
@@ -859,6 +862,47 @@ export class ExtensionController extends EventEmitter {
               }
               break;
             }
+
+            case EMessageFromUI.CloneRepo: {
+              try {
+                logger.info(`[DEBUG] Agent ${this.currentAgentId} processing CloneRepo command from UI`);
+                
+                const { repoUrl, gitToken } = message.data || {};
+                if (!repoUrl) {
+                  throw new Error('Repository URL is required');
+                }
+
+                await this.cloneRepository(repoUrl, gitToken);
+                
+                // Send success response
+                const response: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromServer.RepoCloned,
+                  agent: { id: this.currentAgentId },
+                  data: { repoUrl, success: true },
+                  timestamp: Date.now(),
+                };
+                this.ws?.send(JSON.stringify(response));
+                
+              } catch (error) {
+                logger.error(`Error cloning repository: ${error}`);
+                
+                // Send error response
+                const errorResponse: Message = {
+                  source: ConnectionSource.Agent,
+                  type: EMessageFromServer.RepoCloneError,
+                  agent: { id: this.currentAgentId },
+                  data: { 
+                    error: error instanceof Error ? error.message : 'Unknown error',
+                    repoUrl: message.data?.repoUrl 
+                  },
+                  timestamp: Date.now(),
+                };
+                this.ws?.send(JSON.stringify(errorResponse));
+              }
+              break;
+            }
+            
             default:
               logger.info(
                 `Received message from WebSocket server: ${messageData} which is not handled`
@@ -917,6 +961,112 @@ export class ExtensionController extends EventEmitter {
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = undefined;
+    }
+  }
+
+  /**
+   * Clone a Git repository and open it as workspace
+   */
+  private async cloneRepository(repoUrl: string, gitToken?: string): Promise<void> {
+    try {
+      // Extract repository name from URL for folder naming
+      const repoName = this.extractRepoName(repoUrl);
+      
+      // Create target directory path
+      let targetPath: string;
+      const existingWorkspace = vscode.workspace.workspaceFolders?.[0];
+      
+      if (existingWorkspace) {
+        // If workspace is open, clone into it
+        targetPath = existingWorkspace.uri.fsPath;
+        logger.info(`Cloning repository ${repoUrl} into existing workspace: ${targetPath}`);
+      } else {
+        // If no workspace, create a new folder and open it
+        const homeDir = os.homedir();
+        const projectsDir = path.join(homeDir, 'Projects');
+        targetPath = path.join(projectsDir, repoName);
+        
+        // Create the projects directory if it doesn't exist
+        if (!fs.existsSync(projectsDir)) {
+          fs.mkdirSync(projectsDir, { recursive: true });
+        }
+        
+        // Create the target directory
+        if (!fs.existsSync(targetPath)) {
+          fs.mkdirSync(targetPath, { recursive: true });
+        }
+        
+        logger.info(`Created new directory for repository: ${targetPath}`);
+      }
+
+      // Prepare clone URL with token if provided
+      let cloneUrl = repoUrl;
+      if (gitToken) {
+        const url = new URL(repoUrl);
+        if (url.hostname === 'github.com') {
+          cloneUrl = `https://${gitToken}@github.com${url.pathname}`;
+        } else {
+          // For other git providers, try adding token as username
+          cloneUrl = repoUrl.replace('https://', `https://${gitToken}@`);
+        }
+      }
+
+      // Use VS Code's integrated terminal to clone
+      const terminal = vscode.window.createTerminal({
+        name: 'Git Clone',
+        cwd: existingWorkspace ? targetPath : path.dirname(targetPath),
+      });
+
+      // Show terminal and execute clone command
+      terminal.show();
+      
+      if (existingWorkspace) {
+        // Clone into existing workspace (current directory)
+        terminal.sendText(`git clone ${cloneUrl} .`, true);
+      } else {
+        // Clone into new directory
+        terminal.sendText(`git clone ${cloneUrl} "${repoName}"`, true);
+      }
+
+      // Wait for clone to complete
+      await new Promise(resolve => setTimeout(resolve, 3000));
+
+      // If no existing workspace, open the cloned repository as workspace
+      if (!existingWorkspace) {
+        const folderUri = vscode.Uri.file(targetPath);
+        await vscode.commands.executeCommand('vscode.openFolder', folderUri, false);
+        logger.info(`Opened cloned repository as workspace: ${targetPath}`);
+      }
+
+      logger.info(`Repository ${repoUrl} cloned successfully`);
+      
+      // Show success message to user
+      const message = existingWorkspace 
+        ? `Repository cloned successfully into current workspace`
+        : `Repository cloned and opened as new workspace: ${repoName}`;
+      vscode.window.showInformationMessage(message);
+      
+    } catch (error) {
+      logger.error(`Failed to clone repository: ${error}`);
+      throw error;
+    }
+  }
+
+  /**
+   * Extract repository name from Git URL
+   */
+  private extractRepoName(repoUrl: string): string {
+    try {
+      const url = new URL(repoUrl);
+      const pathParts = url.pathname.split('/').filter(part => part.length > 0);
+      const repoName = pathParts[pathParts.length - 1];
+      // Remove .git extension if present
+      return repoName.replace(/\.git$/, '');
+    } catch (error) {
+      // Fallback: extract from the end of the URL
+      const parts = repoUrl.split('/');
+      const lastPart = parts[parts.length - 1];
+      return lastPart.replace(/\.git$/, '') || 'cloned-repo';
     }
   }
 

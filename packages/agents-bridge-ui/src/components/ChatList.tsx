@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { MessageCircle, Plus, Loader2, ChevronRight, FileText, Settings } from 'lucide-react';
+import { MessageCircle, Plus, Loader2, ChevronRight, FileText, Settings, GitBranch } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useWebSocketConnection } from '../providers/connection.provider';
 import { getMessagesByTaskId } from '../queries/useMessages';
@@ -8,6 +8,7 @@ import { cn } from '../utils/cn';
 import { v4 as uuidv4 } from 'uuid';
 import { useAgentConfiguration } from '../queries/useAgentConfiguration';
 import { ConfigurationModal } from './ConfigurationModal';
+import { ConnectRepoModal } from './ConnectRepoModal';
 
 interface ChatListProps {
   selectedAgent: string | null;
@@ -24,6 +25,7 @@ export function ChatList({
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
   const [isConfigModalOpen, setIsConfigModalOpen] = useState(false);
+  const [isConnectRepoModalOpen, setIsConnectRepoModalOpen] = useState(false);
   
   const { onLoadingStateChange, getTaskHistory, getActiveTaskIds, getTaskDetails, getAgentConfiguration } = useWebSocketConnection();
 
@@ -178,6 +180,12 @@ export function ChatList({
     }
   };
 
+  const handleOpenConnectRepoModal = () => {
+    if (selectedAgent) {
+      setIsConnectRepoModalOpen(true);
+    }
+  };
+
 
 
   // Fetch both active tasks and task history when agent is selected
@@ -251,8 +259,17 @@ export function ChatList({
             {isCreatingTask ? 'Creating...' : 'New Chat'}
           </button>
           <button
+            onClick={handleOpenConnectRepoModal}
+            disabled={!selectedAgent}
+            className="px-3 py-2 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+            title="Connect Repository"
+          >
+            <GitBranch className="h-4 w-4" />
+          </button>
+          <button
             onClick={handleOpenConfigModal}
-            className="px-3 py-2 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors inline-flex items-center gap-2"
+            disabled={!selectedAgent}
+            className="px-3 py-2 text-sm bg-secondary text-secondary-foreground hover:bg-secondary/80 rounded-md transition-colors inline-flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
             title="Update Configuration"
           >
             <Settings className="h-4 w-4" />
@@ -347,6 +364,15 @@ export function ChatList({
         agentId={selectedAgent}
         initialConfig={agentConfig}
       />
+
+      {/* Connect Repository Modal */}
+      {selectedAgent && (
+        <ConnectRepoModal
+          isOpen={isConnectRepoModalOpen}
+          onClose={() => setIsConnectRepoModalOpen(false)}
+          agentId={selectedAgent}
+        />
+      )}
     </div>
   );
 }

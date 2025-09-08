@@ -4,4 +4,5 @@ export type Agent = {
   status: 'connected' | 'disconnected' | 'timeout';
   lastHeartbeat: number;
   connectedAt: number;
+  isRemote?: boolean;
 }

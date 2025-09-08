@@ -15,6 +15,7 @@ type AgentConnection = {
   connectedAt: number;
   gracePeriod?: boolean;
   workspacePath?: string;
+  isRemote?: boolean;
 }
 
 export class AgentManager {
@@ -29,7 +30,7 @@ export class AgentManager {
     this.startHeartbeatPing();
   }
 
-  registerAgent(socket: WebSocket, workspacePath?: string): string {
+  registerAgent(socket: WebSocket, workspacePath?: string, isRemote?: boolean): string {
     const agentId = uuidv4();
     const now = Date.now();
     this.agents.set(agentId, {
@@ -40,6 +41,7 @@ export class AgentManager {
       connectedAt: now,
       workspacePath: workspacePath || "",
       gracePeriod: true, // Don't ping immediately, give client time to establish
+      isRemote: isRemote || false,
     });
     logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
@@ -57,7 +59,7 @@ export class AgentManager {
     return agentId;
   }
 
-  registerAgentWithId(agentId: string, socket: WebSocket, workspacePath?: string): string {
+  registerAgentWithId(agentId: string, socket: WebSocket, workspacePath?: string, isRemote?: boolean): string {
     const now = Date.now();
     this.agents.set(agentId, {
       id: agentId,
@@ -67,6 +69,7 @@ export class AgentManager {
       connectedAt: now,
       workspacePath: workspacePath || "",
       gracePeriod: true, // Don't ping immediately, give client time to establish
+      isRemote: isRemote || false,
     });
     logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
