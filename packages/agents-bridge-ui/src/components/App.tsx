@@ -5,6 +5,7 @@ import { Settings } from './Settings';
 import { useState, useEffect } from 'react';
 import { useWebSocketConnection } from '../providers/connection.provider';
 import { useTasksByAgentId } from '../queries/useTasks';
+import { useAgents } from '../queries/useAgents';
 
 export function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
@@ -15,6 +16,7 @@ export function App() {
   
   const { isConnecting, isConnected, connectionAttempts } = useWebSocketConnection();
   const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const { data: agents = [] } = useAgents();
   
   // Listen for task ID changes (when new tasks are created)
   useEffect(() => {
@@ -31,6 +33,18 @@ export function App() {
   useEffect(() => {
     console.log('🔌 WebSocket Status:', { isConnected, isConnecting, connectionAttempts });
   }, [isConnected, isConnecting, connectionAttempts]);
+
+  // Reset selectedAgent if the agent was removed
+  useEffect(() => {
+    if (selectedAgent && agents.length > 0) {
+      const agentExists = agents.some(agent => agent.id === selectedAgent);
+      if (!agentExists) {
+        console.log(`🗑️ Selected agent ${selectedAgent} was removed, resetting selection`);
+        setSelectedAgent(null);
+        setSelectedTaskId(null);
+      }
+    }
+  }, [selectedAgent, agents]);
   
   // Get task completion status
   const selectedTask = agentTasks?.find((t: any) => t.id === selectedTaskId);

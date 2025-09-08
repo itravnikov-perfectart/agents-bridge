@@ -33,3 +33,17 @@ export const useUpdateAgents = () => {
     }
   })
 }
+
+export const useRemoveAgent = () => {
+  const queryClient = useQueryClient();
+  
+  return useMutation({
+    mutationFn: (agentId: string) => {
+      queryClient.setQueryData(getAgents().queryKey, (old: Agent[] | undefined) => {
+        if (!old) return [];
+        return old.filter(agent => agent.id !== agentId);
+      });
+      return Promise.resolve();
+    }
+  });
+}

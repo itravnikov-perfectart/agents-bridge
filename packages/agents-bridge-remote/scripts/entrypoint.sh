@@ -87,7 +87,8 @@ echo "🔧 Обновление конфигурации VS Code..."
 SETTINGS_JSON=$(cat <<EOF
 {
   "agent-bridge.wsUrl": "${AGENTS_BRIDGE_WS_URL:-ws://host.docker.internal:8080}",
-  "agent-bridge.wsPingInterval": ${AGENTS_BRIDGE_WS_PING_INTERVAL:-10000}
+  "agent-bridge.wsPingInterval": ${AGENTS_BRIDGE_WS_PING_INTERVAL:-10000},
+  "agent-bridge.agentId": "${AGENT_ID:-}"
 }
 EOF
 )

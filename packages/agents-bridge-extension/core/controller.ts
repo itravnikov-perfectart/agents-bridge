@@ -48,10 +48,15 @@ export class ExtensionController extends EventEmitter {
 
   constructor(workspacePath?: string) {
     super();
-    // Generate unique agentId for this controller instance
-    this.currentAgentId = uuidv4();
     this.workspacePath = workspacePath || '';
+    
+    // Use agentId from VS Code settings (set by Docker container), fallback to environment, then UUID
+    const configuredAgentId = this.currentConfig.agentId;
+    this.currentAgentId = configuredAgentId || process.env.AGENT_ID || uuidv4();
+    
     this.initializeRooAdapters(this.currentConfig);
+    
+    logger.info(`ExtensionController initialized with agentId: ${this.currentAgentId} (from ${configuredAgentId ? 'config' : process.env.AGENT_ID ? 'env' : 'generated'})`);
 
     // No periodic broadcasts - events are broadcast immediately when they occur
   }

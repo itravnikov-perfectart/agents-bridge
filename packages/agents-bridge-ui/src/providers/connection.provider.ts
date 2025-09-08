@@ -14,7 +14,7 @@ import {
   ESystemMessage,
   EMessageFromAgent,
 } from 'agents-bridge-shared';
-import { useUpdateAgents } from '../queries/useAgents';
+import { useUpdateAgents, useRemoveAgent } from '../queries/useAgents';
 import {
   getMessagesByTaskId,
   useAddMessage,
@@ -107,6 +107,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const queryClient = useQueryClient();
 
   const updateAgentsMutation = useUpdateAgents();
+  const removeAgentMutation = useRemoveAgent();
   const addMessageMutation = useAddMessage();
   const addMessagesMutation = useAddMessages();
   const upsertAgentStreamMessage = useUpsertAgentStreamMessage();
@@ -168,6 +169,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const handleServerMessage = useCallback((message: Message) => {
     switch (message.type) {
       case EMessageFromServer.AgentList:
+        console.log('[DEBUG] Received agent list:', message.data?.agents);
+        (message.data?.agents || []).forEach((agent: any) => {
+          console.log(`[DEBUG] Agent ${agent.id}: isRemote=${agent.isRemote}, workspace=${agent.workspacePath}`);
+        });
         updateAgentsMutation.mutate(message.data?.agents || []);
         (message.data?.agents || []).forEach((agent: any) => {
           if (agent?.id) {
@@ -176,12 +181,20 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         });
         break;
       case EMessageFromServer.AgentUpdate:
-        updateAgentsMutation.mutate(message.data?.agents || []);
-        (message.data?.agents || []).forEach((agent: any) => {
-          if (agent?.id) {
-            getActiveTaskIds(agent.id);
-          }
-        });
+        console.log('🔄 Agent update:', message.data);
+        
+        // If this is a disconnection event, remove the agent from UI
+        if (message.data?.action === 'disconnected' && message.data?.agentId) {
+          removeAgentMutation.mutate(message.data.agentId);
+        } else {
+          // For other updates, update the agents list
+          updateAgentsMutation.mutate(message.data?.agents || []);
+          (message.data?.agents || []).forEach((agent: any) => {
+            if (agent?.id) {
+              getActiveTaskIds(agent.id);
+            }
+          });
+        }
         break;
       case EMessageFromServer.RemoteAgentCreated:
         console.log('🎉 Remote agent created:', message.data?.container);
@@ -189,7 +202,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         break;
       case EMessageFromServer.RemoteAgentStopped:
         console.log('🛑 Remote agent stopped:', message.data?.agentId);
-        // You can add notifications or other UI feedback here
+        if (message.data?.agentId) {
+          removeAgentMutation.mutate(message.data.agentId);
+        }
         break;
       case EMessageFromServer.RemoteAgentsList:
         console.log('📋 Remote agents list:', message.data?.remoteAgents);

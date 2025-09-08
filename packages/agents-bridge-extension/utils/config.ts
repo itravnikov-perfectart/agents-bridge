@@ -4,6 +4,7 @@ export interface AgentConfiguration {
   defaultRooIdentifier: string;
   wsUrl: string;
   wsPingInterval: number;
+  agentId?: string;
 }
 
 /**
@@ -13,6 +14,7 @@ export const CONFIG_KEYS = {
   DEFAULT_ROO_IDENTIFIER: "agent-bridge.defaultRooIdentifier",
   WS_URL: "agent-bridge.wsUrl",
   WS_PING_INTERVAL: "agent-bridge.wsPingInterval",
+  AGENT_ID: "agent-bridge.agentId",
 } as const;
 
 /**
@@ -22,6 +24,7 @@ export const DEFAULT_CONFIG: AgentConfiguration = {
   defaultRooIdentifier: "RooVeterinaryInc.roo-cline",
   wsUrl: "ws://localhost:8080",
   wsPingInterval: 10000,
+  agentId: undefined,
 };
 
 /**
@@ -42,6 +45,10 @@ export const readConfiguration = (): AgentConfiguration => {
     wsPingInterval: config.get<number>(
       CONFIG_KEYS.WS_PING_INTERVAL,
       DEFAULT_CONFIG.wsPingInterval,
+    ),
+    agentId: config.get<string>(
+      CONFIG_KEYS.AGENT_ID,
+      DEFAULT_CONFIG.agentId,
     ),
   };
 };

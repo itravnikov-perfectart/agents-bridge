@@ -204,6 +204,11 @@ const handleUIConnection = async (
         }),
       );
 
+      logger.info(`[DEBUG] Sending agent list with ${agents.length} agents:`);
+      agents.forEach(agent => {
+        logger.info(`[DEBUG] Agent ${agent.id}: isRemote=${agent.isRemote}, workspace=${agent.workspacePath}`);
+      });
+
       const messageAgentList: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.AgentList,
@@ -456,6 +461,7 @@ const handleAgentConnection = (
       // Use the agent's provided ID instead of generating a new one
       // Determine if this is a remote agent based on ID pattern
       const isRemoteAgent = agentId.startsWith('remote-');
+      logger.info(`[DEBUG] Registering agent ${agentId}, isRemote: ${isRemoteAgent}`);
       
       const registredAgentId = agentManager.registerAgentWithId(
         agentId, // Use the agent's provided ID
