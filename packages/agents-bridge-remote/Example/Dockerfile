@@ -1,0 +1,122 @@
+FROM node:20-slim AS base
+
+# Install pnpm
+ENV PNPM_HOME="/pnpm"
+ENV PATH="$PNPM_HOME:$PATH"
+RUN corepack enable
+RUN npm install -g npm@latest npm-run-all
+
+# Install system packages
+RUN apt update && \
+  apt install -y \
+  curl \
+  git \
+  vim \
+  jq \
+  netcat-openbsd \
+  apt-transport-https \
+  ca-certificates \
+  gnupg \
+  lsb-release \
+  wget \
+  gpg \
+  xvfb \
+  cmake \
+  golang-go \
+  default-jre \
+  python3 \
+  python3-venv \
+  python3-dev \
+  python3-pip \
+  iputils-ping \
+  iproute2 \
+  net-tools \
+  telnet \
+  dnsutils \
+  && rm -rf /var/lib/apt/lists/*
+
+# Install VS Code
+RUN wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg \
+  && install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg \
+  && echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" | tee /etc/apt/sources.list.d/vscode.list > /dev/null \
+  && rm -f packages.microsoft.gpg \
+  && apt update && apt install -y code \
+  && rm -rf /var/lib/apt/lists/*
+
+WORKDIR /roo
+
+# Install rust
+ARG RUST_VERSION=1.87.0
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain ${RUST_VERSION} \
+  && echo 'source $HOME/.cargo/env' >> $HOME/.bashrc
+
+# Install VS Code extensions
+ARG GOLANG_EXT_VERSION=0.46.1
+ARG ESLINT_EXT_VERSION=3.0.10
+ARG JAVA_EXT_VERSION=1.42.0
+ARG PYTHON_EXT_VERSION=2025.6.1
+ARG RUST_EXT_VERSION=0.3.2482
+
+RUN mkdir -p /roo/.vscode-template \
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode-template --install-extension golang.go@${GOLANG_EXT_VERSION} \
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode-template --install-extension dbaeumer.vscode-eslint@${ESLINT_EXT_VERSION} \
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode-template --install-extension redhat.java@${JAVA_EXT_VERSION} \
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode-template --install-extension ms-python.python@${PYTHON_EXT_VERSION} \
+  && yes | code --no-sandbox --user-data-dir /roo/.vscode-template --install-extension rust-lang.rust-analyzer@${RUST_EXT_VERSION}
+
+WORKDIR /roo/repo
+
+# Install npm packages
+RUN mkdir -p \
+  scripts \
+  packages/build \
+  packages/cloud \
+  packages/config-eslint \
+  packages/config-typescript \
+  packages/evals \
+  packages/ipc \
+  packages/telemetry \
+  packages/types \
+  packages/task-runner \
+  src \
+  webview-ui
+
+COPY ./package.json                                 ./
+COPY ./pnpm-lock.yaml                              ./
+COPY ./pnpm-workspace.yaml                         ./
+COPY ./scripts/bootstrap.mjs                       ./scripts/
+COPY ./packages/build/package.json                 ./packages/build/
+COPY ./packages/cloud/package.json                 ./packages/cloud/
+COPY ./packages/config-eslint/package.json         ./packages/config-eslint/
+COPY ./packages/config-typescript/package.json     ./packages/config-typescript/
+COPY ./packages/evals/package.json                 ./packages/evals/
+COPY ./packages/ipc/package.json                   ./packages/ipc/
+COPY ./packages/telemetry/package.json             ./packages/telemetry/
+COPY ./packages/types/package.json                 ./packages/types/
+COPY ./packages/task-runner/package.json           ./packages/task-runner/
+COPY ./src/package.json                            ./src/
+COPY ./webview-ui/package.json                     ./webview-ui/
+
+RUN pnpm install
+
+# Install tsx globally for the entrypoint script
+RUN pnpm add -g tsx
+
+# Copy source code
+COPY . ./
+
+# Copy the pre-installed VS Code extensions
+RUN cp -r /roo/.vscode-template /roo/.vscode
+
+# Build the Roo Code extension
+RUN pnpm vsix -- --out ../bin/roo-code.vsix \
+    && yes | code --no-sandbox --user-data-dir /roo/.vscode --install-extension bin/roo-code.vsix
+
+# Copy entrypoint script
+COPY packages/task-runner/scripts/entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
+
+# Set environment variables
+ENV DONT_PROMPT_WSL_INSTALL=1
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"] 

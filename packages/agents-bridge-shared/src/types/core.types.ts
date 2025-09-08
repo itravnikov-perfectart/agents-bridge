@@ -24,6 +24,7 @@ export enum EMessageFromServer {
   RooCodePartial = "rooCodePartial",
   RooCodeCommand = "rooCodeCommand",
   CreateTask = "createTask",
+  ShutdownContainer = "shutdownContainer",
 }
 
 export enum EMessageFromUI {

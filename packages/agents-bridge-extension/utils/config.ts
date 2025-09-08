@@ -48,3 +48,46 @@ export const readConfiguration = (): AgentConfiguration => {
     ),
   };
 };
+
+/**
+ * Updates a configuration value programmatically
+ * @param key Configuration key to update
+ * @param value New value
+ * @param isGlobal Whether to update global (true) or workspace (false) settings
+ */
+export const updateConfiguration = async (
+  key: keyof typeof CONFIG_KEYS,
+  value: string | number,
+  isGlobal: boolean = true
+): Promise<void> => {
+  const config = vscode.workspace.getConfiguration();
+  const configKey = CONFIG_KEYS[key];
+  
+  try {
+    await config.update(
+      configKey, 
+      value, 
+      isGlobal ? vscode.ConfigurationTarget.Global : vscode.ConfigurationTarget.Workspace
+    );
+  } catch (error) {
+    throw new Error(`Failed to update configuration ${configKey}: ${error}`);
+  }
+};
+
+/**
+ * Resets configuration to default values
+ */
+export const resetConfiguration = async (isGlobal: boolean = true): Promise<void> => {
+  const config = vscode.workspace.getConfiguration();
+  const target = isGlobal ? vscode.ConfigurationTarget.Global : vscode.ConfigurationTarget.Workspace;
+
+  try {
+    await Promise.all([
+      config.update(CONFIG_KEYS.DEFAULT_ROO_IDENTIFIER, undefined, target),
+      config.update(CONFIG_KEYS.WS_URL, undefined, target),
+      config.update(CONFIG_KEYS.WS_PING_INTERVAL, undefined, target),
+    ]);
+  } catch (error) {
+    throw new Error(`Failed to reset configuration: ${error}`);
+  }
+};

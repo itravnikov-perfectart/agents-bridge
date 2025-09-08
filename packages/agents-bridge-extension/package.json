@@ -1,5 +1,6 @@
 {
   "name": "agents-bridge-extension",
+  "repository": "https://github.com/itravnikov-perfectart/agents-bridge",
   "displayName": "Agents Bridge",
   "description": "VS Code extension for Agents Bridge",
   "version": "0.0.1",
@@ -44,7 +45,33 @@
         "command": "agent-bridge.connectToWSServer",
         "title": "Agent Bridge: Connect to WebSocket Server"
       }
-    ]
+    ],
+    "configuration": {
+      "type": "object",
+      "title": "Agents Bridge",
+      "properties": {
+        "agent-bridge.defaultRooIdentifier": {
+          "type": "string",
+          "default": "RooVeterinaryInc.roo-cline",
+          "description": "Идентификатор расширения RooCode по умолчанию",
+          "scope": "application"
+        },
+        "agent-bridge.wsUrl": {
+          "type": "string",
+          "default": "ws://localhost:8080",
+          "description": "URL WebSocket сервера",
+          "scope": "application"
+        },
+        "agent-bridge.wsPingInterval": {
+          "type": "number",
+          "default": 10000,
+          "description": "Интервал ping для WebSocket соединения (в миллисекундах)",
+          "minimum": 1000,
+          "maximum": 60000,
+          "scope": "application"
+        }
+      }
+    }
   },
   "scripts": {
     "compile": "node ./esbuild.js",
@@ -53,7 +80,9 @@
     "dev": "node ./esbuild.js --watch",
     "clean": "rm -rf dist out",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "package": "npm run build && vsce package --no-dependencies",
+    "vscode:package": "npm run package"
   },
   "dependencies": {
     "agents-bridge-shared": "workspace:*",
@@ -67,6 +96,7 @@
     "@types/uuid": "^10.0.0",
     "@typescript-eslint/eslint-plugin": "^8.40.0",
     "@typescript-eslint/parser": "^8.40.0",
+    "@vscode/vsce": "^3.2.1",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
     "typescript": "^5.8.3"

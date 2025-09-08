@@ -1,5 +1,6 @@
 {
   "name": "agents-bridge",
+  "repository": "https://github.com/agents-bridge/agents-bridge",
   "version": "0.0.1",
   "description": "Agents Bridge - VS Code extension, WebSocket server, and UI monorepo",
   "private": true,
