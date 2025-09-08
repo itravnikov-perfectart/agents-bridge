@@ -1,6 +1,4 @@
 import { logger } from "../utils/logger";
-import * as vscode from "vscode";
-import * as path from "path";
 import {
   RooCodeAPI,
   RooCodeSettings,
@@ -11,8 +9,7 @@ import {
 } from "@roo-code/types";
 import { Anthropic } from "@anthropic-ai/sdk";
 import { ExtensionBaseAdapter } from "./ExtensionBaseAdapter";
-import { Semaphore } from "es-toolkit";
-import type { TaskEvent } from "./types";
+import { TaskEvent } from "./types";
 
 export interface RooCodeMessageOptions {
   taskId?: string;
@@ -23,7 +20,6 @@ export interface RooCodeMessageOptions {
 export interface RooCodeTaskOptions extends RooCodeMessageOptions {
   configuration?: RooCodeSettings;
   newTab?: boolean;
-  workspacePath?: string;
 }
 
 export interface SendMessageOptions {
@@ -39,32 +35,16 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private taskEventResolvers: Map<string, ((event: TaskEvent) => void)[]> =
     new Map();
   private extensionId: string;
-  private activeTasks: Set<string> = new Set();
-  private taskSemaphore: Semaphore;
-  private messageHandler: ((message: TaskEvent) => void) | undefined;
-  public lastHeartbeat = 0;
-  public containerId?: string;
-  // Optional external subscriber to receive all Roo events immediately
-  public onEvent?: (event: TaskEvent) => void;
 
-  constructor(extensionId: string, maxConcurrentTasks = 5) {
+  constructor(extensionId: string) {
     super();
     this.extensionId = extensionId;
-    this.taskSemaphore = new Semaphore(maxConcurrentTasks);
-    // Setup periodic heartbeat
-    setInterval(() => {
-      this.lastHeartbeat = Date.now();
-    }, 5000); // Update heartbeat every 5 seconds
-  }
-
-  public setMessageHandler(handler: (message: TaskEvent) => void): void {
-    this.messageHandler = handler;
   }
 
   /**
    * Get the extension ID to discover
    */
-  public getExtensionId(): string {
+  protected getExtensionId(): string {
     return this.extensionId;
   }
 
@@ -92,145 +72,138 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     }
 
     this.api.on(RooCodeEventName.Message, (data) => {
-      logger.info("RooCode Message Event:", JSON.stringify(data, null, 2));
-      const event: TaskEvent = {
+      logger.debug("RooCode Message Event:", JSON.stringify(data, null, 2));
+      this.enqueueEvent(data.taskId, {
         name: RooCodeEventName.Message,
-        data: {
-          ...data,
-          message: {
-            ...data.message,
-          },
-        },
-      };
-      this.enqueueEvent(data.taskId, event);
-      this.onEvent?.(event);
+        data,
+      });
     });
 
     this.api.on(RooCodeEventName.TaskCreated, (taskId) => {
       logger.info(`RooCode Task Created: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskCreated,
-        data: { taskId },
-      };
-      // Track as active immediately on creation
-      this.activeTasks.add(taskId);
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskStarted, (taskId) => {
       logger.info(`RooCode Task Started: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskStarted,
-        data: { taskId },
-      };
-      // Ensure task is tracked as active
-      this.activeTasks.add(taskId);
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(
       RooCodeEventName.TaskCompleted,
       (taskId, tokenUsage, toolUsage) => {
-        logger.info(`RooCode Task Completed: ${taskId}`, {
+        logger.info(`RooCode Task Completed: ${taskId}`);
+        logger.debug(`RooCode Task Completed Details: ${taskId}`, {
           tokenUsage,
           toolUsage,
         });
-        const event: TaskEvent = {
+        this.enqueueEvent(taskId, {
           name: RooCodeEventName.TaskCompleted,
-          data: { taskId, tokenUsage, toolUsage },
-        };
-        // Remove from active on completion
-        this.activeTasks.delete(taskId);
-        this.enqueueEvent(taskId, event);
-        this.onEvent?.(event);
+          data: {
+            taskId,
+            tokenUsage,
+            toolUsage,
+          },
+        });
       },
     );
 
     this.api.on(RooCodeEventName.TaskAborted, (taskId) => {
       logger.info(`RooCode Task Aborted: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskAborted,
-        data: { taskId },
-      };
-      // Remove from active on abort
-      this.activeTasks.delete(taskId);
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskPaused, (taskId) => {
       logger.info(`RooCode Task Paused: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskPaused,
-        data: { taskId },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskUnpaused, (taskId) => {
       logger.info(`RooCode Task Unpaused: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskUnpaused,
-        data: { taskId },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskModeSwitched, (taskId, mode) => {
       logger.info(`RooCode Task Mode Switched: ${taskId} -> ${mode}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskModeSwitched,
-        data: { taskId, mode },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+          mode,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskSpawned, (taskId, childTaskId) => {
       logger.info(`RooCode Task Spawned: ${taskId} -> ${childTaskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskSpawned,
-        data: { taskId, childTaskId },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+          childTaskId,
+        },
+      });
     });
 
     this.api.on(RooCodeEventName.TaskAskResponded, (taskId) => {
       logger.info(`RooCode Task Ask Responded: ${taskId}`);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskAskResponded,
-        data: { taskId },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+        },
+      });
     });
 
     this.api.on(
       RooCodeEventName.TaskTokenUsageUpdated,
       (taskId, tokenUsage) => {
-        logger.info(`RooCode Task Token Usage Updated: ${taskId}`, tokenUsage);
-        const event: TaskEvent = {
+        logger.debug(`RooCode Task Token Usage Updated: ${taskId}`, tokenUsage);
+        this.enqueueEvent(taskId, {
           name: RooCodeEventName.TaskTokenUsageUpdated,
-          data: { taskId, tokenUsage },
-        };
-        this.enqueueEvent(taskId, event);
-        this.onEvent?.(event);
+          data: {
+            taskId,
+            tokenUsage,
+          },
+        });
       },
     );
 
     this.api.on(RooCodeEventName.TaskToolFailed, (taskId, tool, error) => {
       logger.error(`RooCode Task Tool Failed: ${taskId} - ${tool}`, error);
-      const event: TaskEvent = {
+      this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskToolFailed,
-        data: { taskId, tool, error },
-      };
-      this.enqueueEvent(taskId, event);
-      this.onEvent?.(event);
+        data: {
+          taskId,
+          tool,
+          error,
+        },
+      });
     });
   }
 
@@ -238,11 +211,6 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    * Enqueue event for async generators
    */
   private enqueueEvent(taskId: string, event: TaskEvent): void {
-    if (this.messageHandler) {
-      this.messageHandler(event);
-      return;
-    }
-
     // Check if there are waiting resolvers first
     const resolvers = this.taskEventResolvers.get(taskId);
     if (resolvers && resolvers.length > 0) {
@@ -325,9 +293,9 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   /**
    * Start a new task and return async generator for events
    */
-  async startNewTask(
+  async *startNewTask(
     options: RooCodeTaskOptions = {},
-  ): Promise<string> {
+  ): AsyncGenerator<TaskEvent, void, unknown> {
     if (!this.api) {
       throw new Error("RooCode API not available");
     }
@@ -335,35 +303,11 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     logger.info("Starting new RooCode task");
 
     try {
-      // Switch workspace if specified
-      if (options.workspacePath) {
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const targetUri = vscode.Uri.file(options.workspacePath);
-
-        if (
-          !workspaceFolders.some((f) => f.uri.fsPath === options.workspacePath)
-        ) {
-          try {
-            await vscode.workspace.updateWorkspaceFolders(0, 0, {
-              uri: targetUri,
-              name: path.basename(options.workspacePath),
-            });
-            // Wait for workspace to be ready
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          } catch (error) {
-            logger.error(`Failed to update workspace: ${error}`);
-            throw error;
-          }
-        }
-      }
-
       // Start the task
       const taskId = await this.api.startNewTask(options);
 
-      // Track newly started task as active immediately
-      this.activeTasks.add(taskId);
-
-      return taskId;
+      // Create and yield from event stream
+      yield* this.createTaskEventStream(taskId);
     } catch (error) {
       logger.error("Error starting new RooCode task:", error);
       throw error;
@@ -473,7 +417,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async *sendMessage(
     message?: string,
     images?: string[],
-    options?: SendMessageOptions & { workspacePath?: string },
+    options?: SendMessageOptions,
   ): AsyncGenerator<TaskEvent, void, unknown> {
     if (!this.api) {
       throw new Error("RooCode API not available");
@@ -484,55 +428,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     try {
       const { taskId } = options || {};
 
-      // Switch workspace if specified
-      if (options?.workspacePath) {
-        const workspaceFolders = vscode.workspace.workspaceFolders || [];
-        const targetUri = vscode.Uri.file(options.workspacePath);
-
-        // Check if workspace already added
-        if (
-          !workspaceFolders.some((f) => f.uri.fsPath === options.workspacePath)
-        ) {
-          try {
-            vscode.workspace.updateWorkspaceFolders(0, 0, {
-              uri: targetUri,
-              name: path.dirname(options.workspacePath),
-            });
-            // Wait for workspace to be ready
-            await new Promise((resolve) => setTimeout(resolve, 500));
-          } catch (error) {
-            logger.error(`Failed to update workspace: ${error}`);
-            throw error;
-          }
-        }
-      }
-
-      // Verify API is ready before sending
-      if (!this.api.isReady()) {
-        throw new Error("RooCode API is not ready");
-      }
-
-      // Send the message with retry logic
-      let attempts = 0;
-      const maxAttempts = 3;
-      let lastError;
-
-      while (attempts < maxAttempts) {
-        try {
-          await this.api.sendMessage(message, images);
-          break;
-        } catch (error) {
-          lastError = error;
-          attempts++;
-          if (attempts < maxAttempts) {
-            await new Promise((resolve) => setTimeout(resolve, 300));
-          }
-        }
-      }
-
-      if (attempts === maxAttempts) {
-        throw lastError || new Error("Failed to send message after retries");
-      }
+      // Send the message
+      await this.api.sendMessage(message, images);
 
       // If taskId is provided, create event stream for that specific task
       if (taskId) {
@@ -643,25 +540,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    * Get active task IDs that have event streams
    */
   getActiveTaskIds(): string[] {
-    const ids = new Set<string>();
-
-    // Tasks we've explicitly tracked
-    for (const id of this.activeTasks) ids.add(id);
-
-    // Tasks that have pending/active event queues
-    for (const id of this.taskEventQueues.keys()) ids.add(id);
-
-    // Tasks currently in RooCode's UI stack (best-effort)
-    try {
-      if (this.api) {
-        const stack = this.api.getCurrentTaskStack?.();
-        if (Array.isArray(stack)) {
-          for (const id of stack) ids.add(id);
-        }
-      }
-    } catch {}
-
-    return Array.from(ids);
+    return Array.from(this.taskEventQueues.keys());
   }
 
   /**
@@ -767,7 +646,6 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   /**
    * Cleanup resources and remove event listeners
    */
-
   async dispose(): Promise<void> {
     if (this.api) {
       // Remove all event listeners
@@ -776,5 +654,4 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
 
     await super.dispose();
   }
-
 }

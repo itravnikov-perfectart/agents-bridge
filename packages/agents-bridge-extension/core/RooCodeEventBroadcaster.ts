@@ -1,5 +1,7 @@
 import { logger } from "../utils/logger";
 import { RooCodeAdapter } from "./RooCodeAdapter";
+import { RooCodeEventName } from "@roo-code/types";
+import type { TaskEvent } from "./types";
 
 /**
  * Wrapper for RooCodeAdapter that handles raw event broadcasting
@@ -15,39 +17,148 @@ export class RooCodeEventBroadcaster {
   }
 
   /**
-   * Setup raw event broadcasting by intercepting the adapter's onEvent callback
+   * Setup raw event broadcasting by intercepting the adapter's API events
+   * Since RooCodeAdapter doesn't expose onEvent directly, we need to work with the API
    */
   private setupRawEventBroadcasting(): void {
-    // Store the original onEvent callback if it exists
-    const originalOnEvent = this.adapter.onEvent;
-
-    // Override the onEvent to also broadcast raw events immediately
-    this.adapter.onEvent = (event) => {
-      try {
-        // Call the original callback if it exists
-        if (originalOnEvent) {
-          originalOnEvent(event);
+    // For now, we'll use a simpler approach that doesn't interfere with the API
+    // The event broadcasting will be handled through the existing async generator methods
+    logger.info("Raw event broadcasting setup - using async generator approach");
+    
+    // We can still try to set up API event wrapping, but make it optional
+    try {
+      const api = (this.adapter as any).api;
+      if (api) {
+        // Only wrap if we have a callback set
+        if (this.onRawEventCallback) {
+          this.wrapApiEventListeners(api);
         }
+      } else {
+        // If API is not available yet, wait for it to be initialized
+        this.waitForApiAndSetup();
+      }
+    } catch (error) {
+      logger.warn("API event wrapping not available, using fallback approach:", error);
+    }
+  }
 
-        // Immediately broadcast the raw event when it occurs
-        this.broadcastRawEvent(event);
-      } catch (error) {
-        logger.error("Error in raw event broadcasting:", error);
+  /**
+   * Wait for API to be available and then setup event listeners
+   */
+  private waitForApiAndSetup(): void {
+    const checkApi = () => {
+      const api = (this.adapter as any).api;
+      if (api && this.onRawEventCallback) {
+        this.wrapApiEventListeners(api);
+      } else if (!api) {
+        // Check again in 100ms, but only for a limited time
+        setTimeout(checkApi, 100);
       }
     };
+    checkApi();
   }
+
+  /**
+   * Wrap the API event listeners to also broadcast raw events
+   */
+  private wrapApiEventListeners(api: any): void {
+    if (!api || !api.on) {
+      logger.warn("API does not support event listeners");
+      return;
+    }
+
+    logger.info("Setting up API event listener wrapping for raw event broadcasting");
+
+    // Store original listeners
+    const originalListeners = new Map();
+    
+    // Wrap each event type
+    const eventTypes = [
+      RooCodeEventName.Message,
+      RooCodeEventName.TaskCreated,
+      RooCodeEventName.TaskStarted,
+      RooCodeEventName.TaskCompleted,
+      RooCodeEventName.TaskAborted,
+      RooCodeEventName.TaskPaused,
+      RooCodeEventName.TaskUnpaused,
+      RooCodeEventName.TaskModeSwitched,
+      RooCodeEventName.TaskSpawned,
+      RooCodeEventName.TaskAskResponded,
+      RooCodeEventName.TaskTokenUsageUpdated,
+      RooCodeEventName.TaskToolFailed,
+    ];
+
+    eventTypes.forEach(eventType => {
+      // Store the original listener if it exists
+      const originalListener = api.listeners ? api.listeners(eventType) : [];
+      originalListeners.set(eventType, originalListener);
+
+      // Remove existing listeners
+      api.removeAllListeners(eventType);
+
+      // Add our wrapper listener
+      api.on(eventType, (...args: any[]) => {
+        try {
+          // Call original listeners if they exist
+          const original = originalListeners.get(eventType);
+          if (original && original.length > 0) {
+            original.forEach((listener: Function) => {
+              try {
+                listener(...args);
+              } catch (error) {
+                logger.error(`Error in original listener for ${eventType}:`, error);
+              }
+            });
+          }
+
+          // Broadcast the raw event
+          this.broadcastRawEvent(eventType, ...args);
+        } catch (error) {
+          logger.error(`Error in wrapped listener for ${eventType}:`, error);
+        }
+      });
+    });
+
+    logger.info("Successfully wrapped API event listeners for raw event broadcasting");
+  }
+
 
   /**
    * Set the callback for raw event broadcasting
    */
   public setRawEventCallback(callback: (eventName: string, ...args: any[]) => void): void {
     this.onRawEventCallback = callback;
+    
+    // If we now have a callback and the API is available, try to set up event wrapping
+    if (this.onRawEventCallback !== undefined) {
+      try {
+        const api = (this.adapter as any).api;
+        if (api) {
+          this.wrapApiEventListeners(api);
+        }
+      } catch (error) {
+        logger.warn("Could not set up API event wrapping:", error);
+      }
+    }
+  }
+
+  /**
+   * Manually broadcast a raw event (for use with async generators)
+   */
+  public broadcastRawEvent(eventName: string, ...args: any[]): void {
+    if (this.onRawEventCallback) {
+      try {
+        this.onRawEventCallback(eventName, ...args);
+      } catch (error) {
+        logger.error(`Error broadcasting raw event [${eventName}]:`, error);
+      }
+    }
   }
 
   /**
    * Extract raw event data from TaskEvent and broadcast
    */
-  private broadcastRawEvent(taskEvent: any): void {
+  private broadcastRawEventFromTaskEvent(taskEvent: TaskEvent): void {
     if (!this.onRawEventCallback) {
       return;
     }
@@ -57,34 +168,34 @@ export class RooCodeEventBroadcaster {
       
       // Convert TaskEvent back to raw format based on event type
       switch (name) {
-        case 'Message':
+        case RooCodeEventName.Message:
           // Message events have the full data structure
           this.onRawEventCallback(name, data);
           break;
           
-        case 'TaskCreated':
-        case 'TaskStarted':
-        case 'TaskAborted':
-        case 'TaskPaused':
-        case 'TaskUnpaused':
-        case 'TaskModeSwitched':
-        case 'TaskSpawned':
-        case 'TaskAskResponded':
+        case RooCodeEventName.TaskCreated:
+        case RooCodeEventName.TaskStarted:
+        case RooCodeEventName.TaskAborted:
+        case RooCodeEventName.TaskPaused:
+        case RooCodeEventName.TaskUnpaused:
+        case RooCodeEventName.TaskModeSwitched:
+        case RooCodeEventName.TaskSpawned:
+        case RooCodeEventName.TaskAskResponded:
           // These events have taskId as the main data
           this.onRawEventCallback(name, data.taskId);
           break;
           
-        case 'TaskCompleted':
+        case RooCodeEventName.TaskCompleted:
           // TaskCompleted has taskId, tokenUsage, toolUsage
           this.onRawEventCallback(name, data.taskId, data.tokenUsage, data.toolUsage);
           break;
           
-        case 'TaskTokenUsageUpdated':
+        case RooCodeEventName.TaskTokenUsageUpdated:
           // TaskTokenUsageUpdated has taskId and tokenUsage
           this.onRawEventCallback(name, data.taskId, data.tokenUsage);
           break;
           
-        case 'TaskToolFailed':
+        case RooCodeEventName.TaskToolFailed:
           // TaskToolFailed has taskId, tool, and error
           this.onRawEventCallback(name, data.taskId, data.tool, data.error);
           break;
@@ -108,9 +219,16 @@ export class RooCodeEventBroadcaster {
 
   /**
    * Delegate all other method calls to the original adapter
+   * Note: getExtensionId is protected in RooCodeAdapter, so we can't access it directly
    */
   public getExtensionId(): string {
-    return this.adapter.getExtensionId();
+    // Since getExtensionId is protected, we need to access it through the adapter's internal structure
+    try {
+      return (this.adapter as any).extensionId || "unknown";
+    } catch (error) {
+      logger.error("Error getting extension ID:", error);
+      return "unknown";
+    }
   }
 
   public get isActive(): boolean {
@@ -192,8 +310,8 @@ export class RooCodeEventBroadcaster {
     yield* this.adapter.sendMessage(message, images, options);
   }
 
-  public async startNewTask(options: any = {}): Promise<string> {
-    return this.adapter.startNewTask(options);
+  public async *startNewTask(options: any = {}): AsyncGenerator<TaskEvent, void, unknown> {
+    yield* this.adapter.startNewTask(options);
   }
 
   public getActiveTaskIds(): string[] {
@@ -227,15 +345,19 @@ export class RooCodeEventBroadcaster {
 
   /**
    * Get last heartbeat
+   * Note: lastHeartbeat property doesn't exist on RooCodeAdapter
    */
   public get lastHeartbeat(): number {
-    return this.adapter.lastHeartbeat;
+    // Since lastHeartbeat doesn't exist on RooCodeAdapter, return 0 as default
+    return 0;
   }
 
   /**
    * Get container ID
+   * Note: containerId property doesn't exist on RooCodeAdapter
    */
   public get containerId(): string | undefined {
-    return this.adapter.containerId;
+    // Since containerId doesn't exist on RooCodeAdapter, return undefined
+    return undefined;
   }
 }

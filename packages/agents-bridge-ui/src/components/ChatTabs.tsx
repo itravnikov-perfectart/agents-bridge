@@ -1,6 +1,6 @@
 import * as Tabs from '@radix-ui/react-tabs';
 import { useQueryClient } from '@tanstack/react-query';
-import { MessageCircle, Plus } from 'lucide-react';
+import { MessageCircle, Plus, Loader2, ChevronRight, FileText } from 'lucide-react';
 import React, { useEffect, useState } from 'react';
 import { v4 as uuidv4 } from 'uuid';
 import { useWebSocketConnection } from '../providers/connection.provider';
@@ -16,14 +16,65 @@ interface ChatTabsProps {
 export function ChatTabs({ selectedAgent }: ChatTabsProps) {
   const [activeTabIndex, setActiveTabIndex] = useState<string>('0');
   const [view, setView] = useState<'active' | 'history'>('active');
-  const { getActiveTaskIds, getTaskHistory, getTaskDetails } = useWebSocketConnection();
+  const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
+  const [isCreatingTask, setIsCreatingTask] = useState(false);
+  const { getActiveTaskIds, getTaskHistory, getTaskDetails, resumeTask, onLoadingStateChange } = useWebSocketConnection();
   const requestedTaskDetailsRef = React.useRef<Set<string>>(new Set());
+  const resumedTaskIdRef = React.useRef<string | null>(null);
 
   const queryClient = useQueryClient();
   const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  
+  // Group tasks by hierarchy
+  const groupTasksByHierarchy = (tasks: any[]) => {
+    const mainTasks = tasks.filter((t: any) => !t.isSubtask && !t.parentTaskId);
+    const subtasks = tasks.filter((t: any) => t.isSubtask || t.parentTaskId);
+    
+    // Group subtasks by parent
+    const subtasksByParent = subtasks.reduce((acc: any, subtask: any) => {
+      const parentId = subtask.parentTaskId || 'unknown';
+      if (!acc[parentId]) acc[parentId] = [];
+      acc[parentId].push(subtask);
+      return acc;
+    }, {});
+    
+    // Create hierarchical structure
+    const hierarchicalTasks: any[] = [];
+    mainTasks.forEach(mainTask => {
+      hierarchicalTasks.push(mainTask);
+      const childSubtasks = subtasksByParent[mainTask.id] || [];
+      childSubtasks.sort((a: any, b: any) => (a.level || 0) - (b.level || 0));
+      hierarchicalTasks.push(...childSubtasks);
+    });
+    
+    return hierarchicalTasks;
+  };
+  
   const activeTasks = (agentTasks || []).filter((t: any) => !t.isCompleted);
-  const historyTasks = (agentTasks || []).filter((t: any) => !!t.isCompleted);
-  const visibleTasks = view === 'active' ? activeTasks : historyTasks;
+  const historyTasks = (agentTasks || [])
+    .filter((t: any) => !!t.isCompleted)
+    .sort((a: any, b: any) => {
+      // Sort by creation time if available, otherwise by ID (assuming newer IDs are later)
+      const aTime = a.taskData?.created_at || a.taskData?.createdAt;
+      const bTime = b.taskData?.created_at || b.taskData?.createdAt;
+      
+      // If both have timestamps, sort by timestamp (newest first)
+      if (aTime && bTime && typeof aTime === 'string' && typeof bTime === 'string') {
+        try {
+          return new Date(bTime).getTime() - new Date(aTime).getTime();
+        } catch {
+          // If date parsing fails, fall back to ID sorting
+        }
+      }
+      
+      // Sort by ID (assuming newer UUIDs are lexicographically later)
+      // This works well with UUID v4 which includes timestamp information
+      return b.id.localeCompare(a.id);
+    });
+  
+  const visibleTasks = view === 'active' 
+    ? groupTasksByHierarchy(activeTasks) 
+    : groupTasksByHierarchy(historyTasks);
 
   const addTaskMutation = useAddTask();
 
@@ -122,7 +173,8 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
   }, [view]);
 
   const handleCreateNewChat = () => {
-    if (selectedAgent) {
+    if (selectedAgent && !isCreatingTask) {
+      setIsCreatingTask(true);
       addTaskMutation.mutate({
         agentId: selectedAgent,
         task: {
@@ -130,9 +182,77 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
           agentId: selectedAgent,
           isNewTask: true,
         },
+      }, {
+        onSettled: () => {
+          // Reset the creating state after a short delay
+          setTimeout(() => setIsCreatingTask(false), 1000);
+        }
       });
     }
   };
+
+  const handleResumeTask = (taskId: string) => {
+    if (selectedAgent) {
+      // Store the resumed task ID
+      resumedTaskIdRef.current = taskId;
+      
+      // Resume the task
+      resumeTask(selectedAgent, taskId);
+      
+      // Switch to active view immediately
+      setView('active');
+    }
+  };
+
+  const setTaskLoading = (taskId: string, isLoading: boolean) => {
+    setLoadingTasks(prev => {
+      const newSet = new Set(prev);
+      if (isLoading) {
+        newSet.add(taskId);
+      } else {
+        newSet.delete(taskId);
+      }
+      return newSet;
+    });
+  };
+
+  // Handle task resumption - switch to active view and select the resumed task
+  useEffect(() => {
+    if (view === 'active' && activeTasks.length > 0) {
+      // If we have a resumed task ID, try to find and select it
+      if (resumedTaskIdRef.current) {
+        const resumedTaskIndex = activeTasks.findIndex((t: any) => t.id === resumedTaskIdRef.current);
+        if (resumedTaskIndex !== -1) {
+          setActiveTabIndex(String(resumedTaskIndex));
+          resumedTaskIdRef.current = null; // Clear the ref
+          return;
+        }
+      }
+      
+      // Fallback: if current tab index is invalid, select the first active task
+      const currentIndex = parseInt(activeTabIndex, 10);
+      if (Number.isNaN(currentIndex) || currentIndex >= activeTasks.length) {
+        setActiveTabIndex('0');
+      }
+    }
+  }, [view, activeTasks, activeTabIndex]);
+
+  // Listen for loading state changes from WebSocket connection
+  useEffect(() => {
+    const unsubscribe = onLoadingStateChange((taskId: string, isLoading: boolean) => {
+      setLoadingTasks(prev => {
+        const newSet = new Set(prev);
+        if (isLoading) {
+          newSet.add(taskId);
+        } else {
+          newSet.delete(taskId);
+        }
+        return newSet;
+      });
+    });
+    
+    return unsubscribe;
+  }, [onLoadingStateChange]);
 
   if (!selectedAgent) {
     return (
@@ -157,10 +277,11 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
           </p>
           <button
             onClick={handleCreateNewChat}
-            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors"
+            disabled={isCreatingTask}
+            className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
-            Create Chat
+            {isCreatingTask ? 'Creating...' : 'Create Chat'}
           </button>
         </div>
       </div>
@@ -205,6 +326,9 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
                   getMessagesByTaskId(task.id).queryKey
                 ) || [];
               const name = pickTabLabel(task, messages as any[]);
+              const isSubtask = task.isSubtask || task.parentTaskId;
+              const level = task.level || 0;
+              
               return (
                 <Tabs.Trigger
                   key={task.id}
@@ -212,13 +336,26 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
                   className={cn(
                     'inline-flex items-center gap-2 px-3 py-1.5 text-sm font-medium rounded-md',
                     'data-[state=active]:bg-accent data-[state=active]:text-accent-foreground',
-                    'hover:bg-accent/50 transition-colors group max-w-48'
+                    'hover:bg-accent/50 transition-colors group max-w-48',
+                    isSubtask && 'ml-4 border-l-2 border-muted-foreground/30'
                   )}
+                  style={{
+                    paddingLeft: isSubtask ? `${12 + (level * 16)}px` : '12px'
+                  }}
                 >
-                  <MessageCircle className="h-4 w-4 shrink-0" />
+                  {loadingTasks.has(task.id) ? (
+                    <Loader2 className="h-4 w-4 shrink-0 animate-spin" />
+                  ) : isSubtask ? (
+                    <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                  ) : (
+                    <MessageCircle className="h-4 w-4 shrink-0" />
+                  )}
                   <span className="truncate">
                     {task.isNewTask ? 'New Chat' : name || task.id}
                   </span>
+                  {isSubtask && (
+                    <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
+                  )}
                 </Tabs.Trigger>
               );
             })}
@@ -227,10 +364,11 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
           {/* Кнопка создания нового чата */}
           <button
             onClick={handleCreateNewChat}
-            className="ml-auto shrink-0 mr-4 inline-flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors"
+            disabled={isCreatingTask}
+            className="ml-auto shrink-0 mr-4 inline-flex items-center gap-1 px-2 py-1 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus className="h-4 w-4" />
-            New Chat
+            {isCreatingTask ? 'Creating...' : 'New Chat'}
           </button>
         </div>
 
@@ -247,6 +385,8 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
                 isCompleted={task.isCompleted || false}
                 agentId={selectedAgent}
                 taskId={task.id}
+                onResumeTask={handleResumeTask}
+                onSetLoading={setTaskLoading}
               />
             </Tabs.Content>
           ))}

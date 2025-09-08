@@ -14,4 +14,5 @@ export enum Commands {
   RefreshControllers = "agent-bridge.refreshControllers",
   ControllerActions = "agent-bridge.controllerActions",
   ConnectToWSServer = "agent-bridge.connectToWSServer",
+  ReconnectToWSServer = "agent-bridge.reconnectToWSServer",
 }

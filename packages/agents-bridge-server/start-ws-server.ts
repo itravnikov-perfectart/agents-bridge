@@ -6,17 +6,26 @@ import { createWebSocketServer } from './websocket.config';
 const WS_PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT) : 8080;
 const PING_INTERVAL = process.env.WS_PING_INTERVAL ? parseInt(process.env.WS_PING_INTERVAL) : 10000;
 const HEARTBEAT_TIMEOUT_MULTIPLIER = process.env.WS_HEARTBEAT_TIMEOUT_MULTIPLIER ? parseInt(process.env.WS_HEARTBEAT_TIMEOUT_MULTIPLIER) : 5;
+const AUTO_APPROVE_TOOLS = `${process.env.AUTO_APPROVE_TOOLS || ''}`.toLowerCase() === 'true';
+const AUTO_FOLLOWUPS = `${process.env.AUTO_FOLLOWUPS || ''}`.toLowerCase() === 'true';
+const AUTO_FOLLOWUP_DEFAULT = process.env.AUTO_FOLLOWUP_DEFAULT || '';
 
 console.log('🚀 Starting TypeScript WebSocket server...');
 console.log(`📡 Port: ${WS_PORT}`);
 console.log(`💓 Ping interval: ${PING_INTERVAL}ms`);
 console.log(`⏱️  Heartbeat timeout: ${PING_INTERVAL * HEARTBEAT_TIMEOUT_MULTIPLIER}ms (${HEARTBEAT_TIMEOUT_MULTIPLIER}x ping interval)`);
+console.log(`✅ AUTO_APPROVE_TOOLS: ${AUTO_APPROVE_TOOLS}`);
+console.log(`✅ AUTO_FOLLOWUPS: ${AUTO_FOLLOWUPS}`);
+if (AUTO_FOLLOWUP_DEFAULT) console.log(`✅ AUTO_FOLLOWUP_DEFAULT: ${AUTO_FOLLOWUP_DEFAULT}`);
 
 try {
   const wsServer = createWebSocketServer({
     port: WS_PORT,
     pingInterval: PING_INTERVAL,
-    connectionTimeout: PING_INTERVAL * HEARTBEAT_TIMEOUT_MULTIPLIER
+    connectionTimeout: PING_INTERVAL * HEARTBEAT_TIMEOUT_MULTIPLIER,
+    autoApproveTools: AUTO_APPROVE_TOOLS,
+    autoFollowups: AUTO_FOLLOWUPS,
+    autoFollowupDefault: AUTO_FOLLOWUP_DEFAULT,
   });
 
   console.log(`✅ WebSocket server running on ws://localhost:${WS_PORT}`);

@@ -14,6 +14,9 @@ export const TaskSchema = z.object({
   name: z.string().optional(),
   isNewTask: z.boolean().optional(),
   isCompleted: z.boolean().optional(),
+  parentTaskId: z.string().optional(),
+  isSubtask: z.boolean().optional(),
+  level: z.number().optional(),
 });
 
 export const MessageSchema = z.object({

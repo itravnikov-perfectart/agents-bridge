@@ -1,6 +1,6 @@
 
 
-import { User, Wifi, WifiOff, Clock } from 'lucide-react';
+import { User, Wifi, WifiOff, Clock, Settings } from 'lucide-react';
 import { Agent } from 'agents-bridge-shared';
 import { cn } from '../utils/cn';
 import { useAgents } from '../queries/useAgents';
@@ -10,11 +10,13 @@ import { useEffect } from 'react';
 interface SidebarProps {
   selectedAgent: string | null;
   onSelectAgent: (agentId: string) => void;
+  onOpenSettings: () => void;
 }
 
 export function Sidebar({ 
   selectedAgent,
-  onSelectAgent
+  onSelectAgent,
+  onOpenSettings
 }: SidebarProps) {
 
   const { getAgents } = useWebSocketConnection();
@@ -69,7 +71,7 @@ export function Sidebar({
 
   return (
     <div className="w-80 bg-card border-r border-border flex flex-col h-full">
-      <div className="h-full overflow-y-auto">
+      <div className="flex-1 overflow-y-auto">
         {agents.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
             <User className="h-8 w-8 mx-auto mb-2" />
@@ -122,6 +124,17 @@ export function Sidebar({
             ))}
           </div>
         )}
+      </div>
+      
+      {/* Settings Button at Bottom */}
+      <div className="p-4 border-t border-border">
+        <button
+          onClick={onOpenSettings}
+          className="w-full flex items-center gap-2 px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-accent rounded-md transition-colors"
+        >
+          <Settings className="h-4 w-4" />
+          Settings
+        </button>
       </div>
     </div>
   );

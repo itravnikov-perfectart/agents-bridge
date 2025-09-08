@@ -24,6 +24,15 @@ export async function activate(context: vscode.ExtensionContext) {
   // Ensure controller (and RooCode adapter) is initialized before handling commands or WS
   try {
     await extensionController.initialize();
+    
+    // Auto-connect to WebSocket server after initialization
+    const wsPort = extensionController.getWsPort();
+    if (wsPort) {
+      logger.info(`Auto-connecting to WebSocket server on port ${wsPort}`);
+      extensionController.connectToWSServer(wsPort);
+    } else {
+      logger.warn("No WebSocket port configured, skipping auto-connection");
+    }
   } catch (err) {
     logger.error("Controller initialization failed:", err);
   }
@@ -135,6 +144,29 @@ export async function activate(context: vscode.ExtensionContext) {
         logger.error("Error connecting to WebSocket server:", error);
         vscode.window.showErrorMessage(
           `Failed to connect: ${(error as Error).message}`
+        );
+      }
+    }),
+
+    vscode.commands.registerCommand(Commands.ReconnectToWSServer, async () => {
+      try {
+        if (!extensionController) {
+          throw new Error("Extension controller not initialized");
+        }
+
+        const wsPort = extensionController.getWsPort();
+        if (wsPort) {
+          extensionController.connectToWSServer(wsPort);
+          vscode.window.showInformationMessage(
+            `Reconnecting to WebSocket server on port ${wsPort}...`
+          );
+        } else {
+          vscode.window.showWarningMessage("No WebSocket port configured");
+        }
+      } catch (error) {
+        logger.error("Error reconnecting to WebSocket server:", error);
+        vscode.window.showErrorMessage(
+          `Failed to reconnect: ${(error as Error).message}`
         );
       }
     }),

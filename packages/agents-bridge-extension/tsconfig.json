@@ -6,6 +6,7 @@
       "ES2022",
       "DOM"
     ],
+    "types": ["node", "vscode"],
     "composite": true,
     "esModuleInterop": true,
     "sourceMap": true,

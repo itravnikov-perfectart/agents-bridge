@@ -57,6 +57,9 @@ importers:
         specifier: ^8.18.0
         version: 8.18.3
     devDependencies:
+      '@types/node':
+        specifier: ^20.19.10
+        version: 20.19.10
       '@types/uuid':
         specifier: ^10.0.0
         version: 10.0.0
@@ -130,6 +133,9 @@ importers:
 
   packages/agents-bridge-shared:
     dependencies:
+      '@roo-code/types':
+        specifier: ^1.40.0
+        version: 1.63.0
       uuid:
         specifier: ^9.0.1
         version: 9.0.1

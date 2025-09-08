@@ -1,6 +1,6 @@
 import { WebSocket, WebSocketServer } from "ws";
-import { logger } from "./serverLogger";
 import { AgentManager } from "./agent-manager";
+import { logger } from "./serverLogger";
 
 import {
   EConnectionSource,
@@ -15,10 +15,13 @@ export interface WebSocketConfig {
   port: number;
   pingInterval?: number;
   connectionTimeout?: number;
+  autoApproveTools?: boolean;
+  autoFollowups?: boolean;
+  autoFollowupDefault?: string;
 }
 
 export const createWebSocketServer = (config: WebSocketConfig) => {
-  const { port, pingInterval = 10000, connectionTimeout = 30000 } = config;
+  const { port, pingInterval = 10000, connectionTimeout = 30000, autoApproveTools = false, autoFollowups = false, autoFollowupDefault = '' } = config;
 
   const wss = new WebSocketServer({
     port,
@@ -68,6 +71,11 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
             socket,
             agentManager,
             uiClients,
+            {
+              autoApproveTools,
+              autoFollowups,
+              autoFollowupDefault,
+            },
           );
         } else {
           logger.warn(`Unknown connection type: ${source}`);
@@ -258,7 +266,7 @@ const handleUIConnection = (
       socket.send(JSON.stringify(messageRegistered));
       break;
     case ESystemMessage.Ping:
-      // UI heartbeat/ping, acknowledge by ignoring to keep logs clean
+      // UI heartbeat/ping, acknowledge silently
       break;
     case ESystemMessage.Unregister:
       logger.info(`UI client disconnected`);
@@ -318,11 +326,14 @@ const broadcastAgentUpdate = (
   });
 };
 
+type AutoConfig = { autoApproveTools: boolean; autoFollowups: boolean; autoFollowupDefault: string };
+
 const handleAgentConnection = (
   message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
   uiClients: Set<WebSocket>,
+  autoConfig: AutoConfig,
 ) => {
   const { type, agent } = message;
 
@@ -376,9 +387,8 @@ const handleAgentConnection = (
         logger.warn(`Agent ${agentId} not found for ping`);
         return;
       }
-      const timestamp = message?.timestamp;
       agentManager.updateHeartbeat(agentId);
-      logger.info(`Received ping from agent ${agentId} at ${timestamp}`);
+      // Ping received silently - no logging
       break;
     case ESystemMessage.Pong:
       // For non-register messages, check if agent exists
@@ -388,7 +398,7 @@ const handleAgentConnection = (
         return;
       }
       agentManager.updateHeartbeat(agentId);
-      logger.info(`Received pong from agent ${agentId}`);
+      // Pong received silently - no logging
       break;
     case EMessageFromAgent.ProfilesResponse:
     case EMessageFromAgent.ActiveProfileResponse:
@@ -396,6 +406,7 @@ const handleAgentConnection = (
     case EMessageFromAgent.ActiveTaskIdsResponse:
     case EMessageFromAgent.AgentResponse:
     case EMessageFromAgent.RooCodeCommandResponse:
+    case EMessageFromAgent.RooCodeEvent:
       // Forward RooCode response to all UI clients
       const agentResponse = agentManager.getAgent(agentId);
       if (!agentResponse) {
@@ -422,6 +433,82 @@ const handleAgentConnection = (
         }
       });
       logger.info(`Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${JSON.stringify(message)}`);
+
+      // Auto-approval / auto-followup logic
+      try {
+        const evt: any = (message as any)?.event?.message;
+        const taskId: string | undefined = (message as any)?.event?.taskId?.toString?.();
+        if (!evt || !taskId) break;
+
+        const say = evt?.say;
+        const isAsk = evt?.type === 'ask' || say === 'ask';
+        const isPartial = !!evt?.partial;
+
+        if (!isAsk || isPartial) break; // Only act on final ask events
+
+        // If tool approval is requested
+        if (autoConfig.autoApproveTools && (evt?.ask === 'tool' || evt?.tool)) {
+          // Try to parse JSON payload if present to extract tool
+          let toolPayload: any = null;
+          const text = evt?.text;
+          if (typeof text === 'string' && text.trim().startsWith('{')) {
+            try { toolPayload = JSON.parse(text); } catch {}
+          }
+          const toolName = toolPayload?.tool || evt?.tool?.name || evt?.tool || 'unknown_tool';
+          const responseMsg: Message = {
+            source: EConnectionSource.UI,
+            type: EMessageFromUI.SendMessageToTask,
+            agent: { id: agentId },
+            data: {
+              taskId,
+              message: JSON.stringify({ approved: true, tool: toolName, data: toolPayload || evt?.tool || {} })
+            },
+            timestamp: Date.now(),
+          };
+          const agentConn = agentManager.getAgent(agentId);
+          if (agentConn?.socket?.readyState === WebSocket.OPEN) {
+            agentConn.socket.send(JSON.stringify(responseMsg));
+            logger.info(`Auto-approved tool '${toolName}' for task ${taskId} on agent ${agentId}`);
+          }
+          break;
+        }
+
+        // Generic follow-up question auto-answer
+        if (autoConfig.autoFollowups) {
+          const candidates: string[] = [];
+          const rawSuggest = (evt?.suggest || evt?.options || evt?.choices || []) as any[];
+          if (Array.isArray(rawSuggest)) {
+            for (const s of rawSuggest) {
+              const val = s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
+              if (typeof val === 'string' && val.trim()) candidates.push(val.trim());
+            }
+          }
+          if (evt?.buttons) {
+            const primary = evt.buttons.primary ?? evt.buttons.ok ?? evt.buttons.confirm;
+            const secondary = evt.buttons.secondary ?? evt.buttons.cancel;
+            if (typeof primary === 'string' && primary.trim()) candidates.push(primary.trim());
+            if (typeof secondary === 'string' && secondary.trim()) candidates.push(secondary.trim());
+          }
+          let answer = autoConfig.autoFollowupDefault && autoConfig.autoFollowupDefault.trim()
+            ? autoConfig.autoFollowupDefault.trim()
+            : (candidates[0] || 'Yes');
+
+          const responseMsg: Message = {
+            source: EConnectionSource.UI,
+            type: EMessageFromUI.SendMessageToTask,
+            agent: { id: agentId },
+            data: { taskId, message: answer },
+            timestamp: Date.now(),
+          };
+          const agentConn = agentManager.getAgent(agentId);
+          if (agentConn?.socket?.readyState === WebSocket.OPEN) {
+            agentConn.socket.send(JSON.stringify(responseMsg));
+            logger.info(`Auto-answered follow-up for task ${taskId} on agent ${agentId} with: ${answer}`);
+          }
+        }
+      } catch (e) {
+        logger.error('Auto-approval/followup handling error:', e);
+      }
       break;
       
    
