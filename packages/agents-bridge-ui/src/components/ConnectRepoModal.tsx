@@ -1,8 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { X, GitBranch, Lock, AlertCircle } from 'lucide-react';
-import { cn } from '../utils/cn';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { useGitHubToken } from './Settings';
+import React, {useState, useEffect} from 'react';
+import {X, GitBranch, Lock, AlertCircle} from 'lucide-react';
+import {cn} from '../utils/cn';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {useGitHubToken} from './Settings';
 
 interface ConnectRepoModalProps {
   isOpen: boolean;
@@ -10,17 +10,13 @@ interface ConnectRepoModalProps {
   agentId: string;
 }
 
-export const ConnectRepoModal: React.FC<ConnectRepoModalProps> = ({
-  isOpen,
-  onClose,
-  agentId,
-}) => {
+export const ConnectRepoModal: React.FC<ConnectRepoModalProps> = ({isOpen, onClose, agentId}) => {
   const [repoUrl, setRepoUrl] = useState('');
   const [gitToken, setGitToken] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const { cloneRepository } = useWebSocketConnection();
+  const {cloneRepository} = useWebSocketConnection();
   const savedGitToken = useGitHubToken();
 
   // Pre-fill token from settings
@@ -32,7 +28,7 @@ export const ConnectRepoModal: React.FC<ConnectRepoModalProps> = ({
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    
+
     if (!repoUrl.trim()) {
       setError('Repository URL is required');
       return;
@@ -51,7 +47,7 @@ export const ConnectRepoModal: React.FC<ConnectRepoModalProps> = ({
 
     try {
       await cloneRepository(agentId, repoUrl.trim(), gitToken.trim() || undefined);
-      
+
       // Close modal on success
       setRepoUrl('');
       setGitToken(savedGitToken || '');
@@ -161,10 +157,10 @@ export const ConnectRepoModal: React.FC<ConnectRepoModalProps> = ({
               type="submit"
               disabled={isLoading || !repoUrl.trim()}
               className={cn(
-                "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2",
+                'px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2',
                 isLoading || !repoUrl.trim()
-                  ? "bg-muted text-muted-foreground cursor-not-allowed"
-                  : "bg-primary text-primary-foreground hover:bg-primary/90"
+                  ? 'bg-muted text-muted-foreground cursor-not-allowed'
+                  : 'bg-primary text-primary-foreground hover:bg-primary/90'
               )}
             >
               <GitBranch className="h-4 w-4" />

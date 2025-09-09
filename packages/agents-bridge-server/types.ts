@@ -1,10 +1,10 @@
-import { TaskEvent } from '@roo-code/types';
+import {TaskEvent} from '@roo-code/types';
 import {
   EConnectionSource,
   EMessageFromAgent,
   EMessageFromServer,
   EMessageFromUI,
-  ESystemMessage,
+  ESystemMessage
 } from './message.enum';
 
 export {
@@ -16,11 +16,7 @@ export {
 } from './message.enum';
 
 export interface Message {
-  type:
-    | EMessageFromAgent
-    | EMessageFromUI
-    | EMessageFromServer
-    | ESystemMessage;
+  type: EMessageFromAgent | EMessageFromUI | EMessageFromServer | ESystemMessage;
   source: EConnectionSource;
   timestamp?: number;
   agent?: {
@@ -55,13 +51,7 @@ export interface ProcessStatus {
   pid?: number;
   containerId?: string;
   jobId?: string;
-  status:
-    | 'unknown'
-    | 'created'
-    | 'running'
-    | 'stopped'
-    | 'failed'
-    | 'completed';
+  status: 'unknown' | 'created' | 'running' | 'stopped' | 'failed' | 'completed';
   exitCode?: number;
   memoryUsage?: number;
   cpuUsage?: number;

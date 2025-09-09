@@ -1,33 +1,4 @@
-import typescriptEslint from "@typescript-eslint/eslint-plugin";
-import tsParser from "@typescript-eslint/parser";
+import base from '../../eslint.config.mjs';
 
-export default [{
-    files: ["**/*.{ts,tsx}"],
-}, {
-    plugins: {
-        "@typescript-eslint": typescriptEslint,
-    },
-
-    languageOptions: {
-        parser: tsParser,
-        ecmaVersion: 2022,
-        sourceType: "module",
-        parserOptions: {
-            ecmaFeatures: {
-                jsx: true,
-            },
-        },
-    },
-
-    rules: {
-        "@typescript-eslint/naming-convention": ["warn", {
-            selector: "import",
-            format: ["camelCase", "PascalCase"],
-        }],
-
-        curly: "warn",
-        eqeqeq: "warn",
-        "no-throw-literal": "warn",
-        semi: "warn",
-    },
-}];
+// UI package may need JSX parser options; ensure the UI files are covered
+export default base;

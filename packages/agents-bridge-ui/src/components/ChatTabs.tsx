@@ -1,25 +1,19 @@
 import * as Tabs from '@radix-ui/react-tabs';
-import { useQueryClient } from '@tanstack/react-query';
-import {
-  MessageCircle,
-  Plus,
-  Loader2,
-  ChevronRight,
-  FileText,
-} from 'lucide-react';
-import React, { useEffect, useState } from 'react';
-import { v4 as uuidv4 } from 'uuid';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { getMessagesByTaskId } from '../queries/useMessages';
-import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
-import { cn } from '../utils/cn';
-import { ChatWindow } from './ChatWindow';
+import {useQueryClient} from '@tanstack/react-query';
+import {MessageCircle, Plus, Loader2, ChevronRight, FileText} from 'lucide-react';
+import React, {useEffect, useState} from 'react';
+import {v4 as uuidv4} from 'uuid';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {getMessagesByTaskId} from '../queries/useMessages';
+import {useAddTask, useTasksByAgentId} from '../queries/useTasks';
+import {cn} from '../utils/cn';
+import {ChatWindow} from './ChatWindow';
 
 interface ChatTabsProps {
   selectedAgent: string | null;
 }
 
-export function ChatTabs({ selectedAgent }: ChatTabsProps) {
+export function ChatTabs({selectedAgent}: ChatTabsProps) {
   const [activeTabIndex, setActiveTabIndex] = useState<string>('0');
   const [view, setView] = useState<'active' | 'history'>('active');
   const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
@@ -34,13 +28,13 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
     resumeTask,
     terminateTask,
     onLoadingStateChange,
-    onTaskSpawned,
+    onTaskSpawned
   } = useWebSocketConnection();
   const requestedTaskDetailsRef = React.useRef<Set<string>>(new Set());
   const resumedTaskIdRef = React.useRef<string | null>(null);
 
   const queryClient = useQueryClient();
-  const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const {data: agentTasks} = useTasksByAgentId(selectedAgent);
 
   // Group tasks by hierarchy
   const groupTasksByHierarchy = (tasks: any[]) => {
@@ -78,12 +72,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
       const bTime = b.taskData?.created_at || b.taskData?.createdAt;
 
       // If both have timestamps, sort by timestamp (newest first)
-      if (
-        aTime &&
-        bTime &&
-        typeof aTime === 'string' &&
-        typeof bTime === 'string'
-      ) {
+      if (aTime && bTime && typeof aTime === 'string' && typeof bTime === 'string') {
         try {
           return new Date(bTime).getTime() - new Date(aTime).getTime();
         } catch {
@@ -97,9 +86,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
     });
 
   const visibleTasks =
-    view === 'active'
-      ? groupTasksByHierarchy(activeTasks)
-      : groupTasksByHierarchy(historyTasks);
+    view === 'active' ? groupTasksByHierarchy(activeTasks) : groupTasksByHierarchy(historyTasks);
 
   const addTaskMutation = useAddTask();
 
@@ -109,17 +96,11 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
     }
     let text = raw;
     // Remove environment and task blocks
-    text = text.replace(
-      /<environment_details[\s\S]*?<\/environment_details>/gi,
-      ''
-    );
+    text = text.replace(/<environment_details[\s\S]*?<\/environment_details>/gi, '');
     text = text.replace(/<task[\s\S]*?<\/task>/gi, '');
     // Remove thinking/follow-up blocks
     text = text.replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
-    text = text.replace(
-      /<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi,
-      ''
-    );
+    text = text.replace(/<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi, '');
     // If contains bracketed meta like [ask_followup_question ...] Result: ... → take the Result tail
     const resultIdx = text.indexOf('Result:');
     if (resultIdx !== -1) {
@@ -158,8 +139,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
       // Try to get first message from task data
       if (taskData?.messages && Array.isArray(taskData.messages)) {
         for (const m of taskData.messages) {
-          const content =
-            typeof m?.content === 'string' ? (m.content as string) : '';
+          const content = typeof m?.content === 'string' ? (m.content as string) : '';
           const cleaned = sanitizeTitle(content).trim();
           if (cleaned) {
             return cleaned;
@@ -174,8 +154,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
     }
     // Walk messages from start to find the first meaningful line
     for (const m of msgs) {
-      const content =
-        typeof m?.content === 'string' ? (m.content as string) : '';
+      const content = typeof m?.content === 'string' ? (m.content as string) : '';
       const cleaned = sanitizeTitle(content).trim();
       if (cleaned) {
         return cleaned;
@@ -196,11 +175,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
     const taskCount = visibleTasks.length;
     if (taskCount > 0) {
       const currentIndex = parseInt(activeTabIndex, 10);
-      if (
-        Number.isNaN(currentIndex) ||
-        currentIndex < 0 ||
-        currentIndex >= taskCount
-      ) {
+      if (Number.isNaN(currentIndex) || currentIndex < 0 || currentIndex >= taskCount) {
         setActiveTabIndex('0');
       }
     }
@@ -210,11 +185,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
   useEffect(() => {
     if (selectedAgent && visibleTasks && visibleTasks.length > 0) {
       const currentIndex = parseInt(activeTabIndex, 10);
-      if (
-        !Number.isNaN(currentIndex) &&
-        currentIndex >= 0 &&
-        currentIndex < visibleTasks.length
-      ) {
+      if (!Number.isNaN(currentIndex) && currentIndex >= 0 && currentIndex < visibleTasks.length) {
         const activeTask = visibleTasks[currentIndex];
         if (activeTask && !requestedTaskDetailsRef.current.has(activeTask.id)) {
           requestedTaskDetailsRef.current.add(activeTask.id);
@@ -240,8 +211,8 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
           task: {
             id: uuidv4(),
             agentId: selectedAgent,
-            isNewTask: true,
-          },
+            isNewTask: true
+          }
         },
         {
           onSettled: () => {
@@ -249,7 +220,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
             setTimeout(() => setIsCreatingTask(false), 1000);
             // After creating, make sure the first active tab is selected
             setActiveTabIndex('0');
-          },
+          }
         }
       );
     }
@@ -305,8 +276,10 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
 
   // Auto-focus newly spawned subtasks
   useEffect(() => {
-    const unsubscribe = onTaskSpawned(({ agentId, parentTaskId, childTaskId }) => {
-      if (!selectedAgent || agentId !== selectedAgent) return;
+    const unsubscribe = onTaskSpawned(({agentId, parentTaskId, childTaskId}) => {
+      if (!selectedAgent || agentId !== selectedAgent) {
+        return;
+      }
       // Switch to active view and focus the child task tab when it appears
       setView('active');
       setPendingSpawnChildId(childTaskId);
@@ -318,7 +291,9 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
 
   // Focus pending spawned child when it becomes visible in activeTasks
   useEffect(() => {
-    if (view !== 'active' || !pendingSpawnChildId) return;
+    if (view !== 'active' || !pendingSpawnChildId) {
+      return;
+    }
     const idx = (activeTasks || []).findIndex((t: any) => t.id === pendingSpawnChildId);
     if (idx >= 0) {
       setActiveTabIndex(String(idx));
@@ -328,19 +303,17 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
 
   // Listen for loading state changes from WebSocket connection
   useEffect(() => {
-    const unsubscribe = onLoadingStateChange(
-      (taskId: string, isLoading: boolean) => {
-        setLoadingTasks((prev) => {
-          const newSet = new Set(prev);
-          if (isLoading) {
-            newSet.add(taskId);
-          } else {
-            newSet.delete(taskId);
-          }
-          return newSet;
-        });
-      }
-    );
+    const unsubscribe = onLoadingStateChange((taskId: string, isLoading: boolean) => {
+      setLoadingTasks((prev) => {
+        const newSet = new Set(prev);
+        if (isLoading) {
+          newSet.add(taskId);
+        } else {
+          newSet.delete(taskId);
+        }
+        return newSet;
+      });
+    });
 
     return unsubscribe;
   }, [onLoadingStateChange]);
@@ -363,9 +336,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
         <div className="text-center">
           <MessageCircle className="h-16 w-16 mx-auto mb-4 text-muted-foreground" />
           <h3 className="text-lg font-medium mb-2">No active chats</h3>
-          <p className="text-muted-foreground mb-4">
-            Create a new chat with agent {selectedAgent}
-          </p>
+          <p className="text-muted-foreground mb-4">Create a new chat with agent {selectedAgent}</p>
           <button
             onClick={handleCreateNewChat}
             disabled={isCreatingTask}
@@ -424,16 +395,23 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
             {historyTasks.length > 0 && (
               <button
                 onClick={() => {
-                  if (!selectedAgent || activeTasks.length === 0) return;
+                  if (!selectedAgent || activeTasks.length === 0) {
+                    return;
+                  }
                   const currentIndex = parseInt(activeTabIndex, 10);
                   const activeTask =
                     activeTasks[
-                      Number.isNaN(currentIndex) || currentIndex < 0 || currentIndex >= activeTasks.length
+                      Number.isNaN(currentIndex) ||
+                      currentIndex < 0 ||
+                      currentIndex >= activeTasks.length
                         ? 0
                         : currentIndex
                     ];
                   if (activeTask) {
-                    console.info('[UI->WS] TerminateTask (from header button)', { agentId: selectedAgent, taskId: activeTask.id });
+                    console.info('[UI->WS] TerminateTask (from header button)', {
+                      agentId: selectedAgent,
+                      taskId: activeTask.id
+                    });
                     terminateTask(selectedAgent, activeTask.id);
                   }
                 }}
@@ -455,9 +433,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
 
             {visibleTasks.map((task, index) => {
               const messages =
-                queryClient.getQueryData(
-                  getMessagesByTaskId(task.id).queryKey
-                ) || [];
+                queryClient.getQueryData(getMessagesByTaskId(task.id).queryKey) || [];
               const name = pickTabLabel(task, messages as any[]);
               const isSubtask = task.isSubtask || task.parentTaskId;
               const level = task.level || 0;
@@ -473,7 +449,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
                     isSubtask && 'ml-4 border-l-2 border-muted-foreground/30'
                   )}
                   style={{
-                    paddingLeft: isSubtask ? `${12 + level * 16}px` : '12px',
+                    paddingLeft: isSubtask ? `${12 + level * 16}px` : '12px'
                   }}
                 >
                   {loadingTasks.has(task.id) ? (
@@ -483,11 +459,11 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
                   ) : (
                     <MessageCircle className="h-4 w-4 shrink-0" />
                   )}
-                  <span className="truncate">
-                    {task.isNewTask ? 'New Chat' : name || task.id}
-                  </span>
+                  <span className="truncate">{task.isNewTask ? 'New Chat' : name || task.id}</span>
                   {isSubtask && (
-                    <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">Subtask</span>
+                    <span className="ml-1 text-[10px] px-1 py-0.5 rounded bg-muted text-muted-foreground">
+                      Subtask
+                    </span>
                   )}
                   {isSubtask && (
                     <ChevronRight className="h-3 w-3 shrink-0 text-muted-foreground/50" />
@@ -518,7 +494,7 @@ export function ChatTabs({ selectedAgent }: ChatTabsProps) {
             >
               {/* Primary chat area (left) */}
               <div className="flex h-full w-full gap-2">
-                <div className={cn('flex-1 min-w-0 overflow-hidden') }>
+                <div className={cn('flex-1 min-w-0 overflow-hidden')}>
                   <ChatWindow
                     isNewTaskChat={task.isNewTask || false}
                     isCompleted={task.isCompleted || false}

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 
-import { createWebSocketServer } from './websocket.config';
-import { logger } from './serverLogger';
+import {createWebSocketServer} from './websocket.config';
+import {logger} from './serverLogger';
 
 // Configuration
 const WS_PORT = process.env.WS_PORT ? parseInt(process.env.WS_PORT) : 8080;
@@ -46,7 +46,6 @@ try {
       process.exit(1);
     }
   });
-
 } catch (error) {
   console.error('❌ Failed to start WebSocket server:', error);
   process.exit(1);

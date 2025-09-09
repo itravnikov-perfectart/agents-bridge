@@ -1,11 +1,9 @@
-
-
-import { User, Wifi, WifiOff, Clock, Settings, Plus, Container, X, Loader2 } from 'lucide-react';
-import { Agent } from 'agents-bridge-shared';
-import { cn } from '../utils/cn';
-import { useAgents } from '../queries/useAgents';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { useEffect, useState } from 'react';
+import {User, Wifi, WifiOff, Clock, Settings, Plus, Container, X, Loader2} from 'lucide-react';
+import {Agent} from 'agents-bridge-shared';
+import {cn} from '../utils/cn';
+import {useAgents} from '../queries/useAgents';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {useEffect, useState} from 'react';
 
 interface SidebarProps {
   selectedAgent: string | null;
@@ -13,21 +11,17 @@ interface SidebarProps {
   onOpenSettings: () => void;
 }
 
-export function Sidebar({ 
-  selectedAgent,
-  onSelectAgent,
-  onOpenSettings
-}: SidebarProps) {
-
-  const { getAgents, createRemoteAgent, stopRemoteAgent, onRemoteAgentCreated, onRemoteAgentError } = useWebSocketConnection();
+export function Sidebar({selectedAgent, onSelectAgent, onOpenSettings}: SidebarProps) {
+  const {getAgents, createRemoteAgent, stopRemoteAgent, onRemoteAgentCreated, onRemoteAgentError} =
+    useWebSocketConnection();
   const [isCreatingRemoteAgent, setIsCreatingRemoteAgent] = useState(false);
 
-  const { data: agents = [] } = useAgents();
+  const {data: agents = []} = useAgents();
 
   const formatTime = (timestamp: number) => {
     return new Date(timestamp).toLocaleTimeString('en-US', {
       hour: '2-digit',
-      minute: '2-digit',
+      minute: '2-digit'
     });
   };
 
@@ -122,7 +116,7 @@ export function Sidebar({
           {isCreatingRemoteAgent ? 'Creating...' : 'Create Remote Agent'}
         </button>
       </div>
-      
+
       <div className="flex-1 overflow-y-auto">
         {agents.length === 0 ? (
           <div className="p-4 text-center text-muted-foreground">
@@ -136,24 +130,24 @@ export function Sidebar({
                 key={agent.id}
                 onClick={() => onSelectAgent(agent.id)}
                 className={cn(
-                  "p-3 rounded-lg cursor-pointer transition-colors mb-2 bg-background",
-                  "hover:bg-accent hover:text-accent-foreground border-2",
-                  selectedAgent === agent.id 
-                    ? "border-primary" 
-                    : "border-transparent" 
+                  'p-3 rounded-lg cursor-pointer transition-colors mb-2 bg-background',
+                  'hover:bg-accent hover:text-accent-foreground border-2',
+                  selectedAgent === agent.id ? 'border-primary' : 'border-transparent'
                 )}
               >
                 <div className="flex items-start gap-3">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <span className="font-medium truncate">{agent.workspacePath?.split('/').pop()}</span>
+                      <span className="font-medium truncate">
+                        {agent.workspacePath?.split('/').pop()}
+                      </span>
                       {isRemoteAgent(agent) && (
                         <div className="flex items-center gap-1 px-2 py-0.5 bg-blue-100 text-blue-700 text-xs rounded-full">
                           <Container className="h-3 w-3" />
                           <span>Remote</span>
                         </div>
                       )}
-                      <div className={cn("w-2 h-2 rounded-full", getStatusColor(agent.status))} />
+                      <div className={cn('w-2 h-2 rounded-full', getStatusColor(agent.status))} />
                     </div>
 
                     <div className="flex items-center gap-1 mb-1">
@@ -172,9 +166,7 @@ export function Sidebar({
                     )}
 
                     {agent.id && (
-                      <div className="text-xs text-muted-foreground">
-                        ID: {agent.id}
-                      </div>
+                      <div className="text-xs text-muted-foreground">ID: {agent.id}</div>
                     )}
                   </div>
 
@@ -194,7 +186,7 @@ export function Sidebar({
           </div>
         )}
       </div>
-      
+
       {/* Settings Button at Bottom */}
       <div className="p-4 border-t border-border">
         <button

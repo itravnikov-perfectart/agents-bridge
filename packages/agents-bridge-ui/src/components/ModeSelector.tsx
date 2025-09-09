@@ -9,13 +9,13 @@ interface ModeSelectorProps {
 export const ModeSelector: React.FC<ModeSelectorProps> = ({
   selectedMode,
   onModeChange,
-  disabled = false,
+  disabled = false
 }) => {
   const modes = [
-    { value: 'code', label: 'Code' },
-    { value: 'chat', label: 'Chat' },
-    { value: 'task', label: 'Task' },
-    { value: 'orchestrator', label: 'Orchestrator' },
+    {value: 'code', label: 'Code'},
+    {value: 'chat', label: 'Chat'},
+    {value: 'task', label: 'Task'},
+    {value: 'orchestrator', label: 'Orchestrator'}
   ];
 
   return (
@@ -36,5 +36,3 @@ export const ModeSelector: React.FC<ModeSelectorProps> = ({
     </div>
   );
 };
-
-

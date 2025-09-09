@@ -7,4 +7,4 @@ export type Task = {
   parentTaskId?: string;
   isSubtask?: boolean;
   level?: number; // 0 for main tasks, 1+ for subtasks
-}
+};

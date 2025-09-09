@@ -1,0 +1,11 @@
+#!/bin/sh
+
+# 1) Run eslint --fix and prettier --write on staged files
+# Prefer local devDep; fallback to dlx if not installed yet
+pnpm exec lint-staged 2>/dev/null || pnpm dlx lint-staged || exit 1
+
+# 2) Run type-check across the monorepo (fast, no emit)
+pnpm type-check || exit 1
+
+# 3) Placeholder for future tests
+# pnpm test -w -- --passWithNoTests

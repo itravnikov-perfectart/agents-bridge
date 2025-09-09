@@ -1,8 +1,8 @@
-import * as vscode from "vscode";
-import * as os from "os";
-import { ExtensionController } from "../core/controller";
-import { logger } from "./logger";
-import packageJson from "../package.json";
+import * as vscode from 'vscode';
+import * as os from 'os';
+import {ExtensionController} from '../core/controller';
+import {logger} from './logger';
+import packageJson from '../package.json';
 
 export interface ExtensionStatus {
   isInstalled: boolean;
@@ -47,12 +47,12 @@ export function getSystemInfo(controller: ExtensionController): SystemInfo {
     platform: os.platform(),
     arch: os.arch(),
     release: os.release(),
-    homedir: os.homedir(),
+    homedir: os.homedir()
   };
 
   // Get workspace root path
   const workspaceFolder = vscode.workspace.workspaceFolders?.[0];
-  const workspace = workspaceFolder?.uri.fsPath || "";
+  const workspace = workspaceFolder?.uri.fsPath || '';
 
   // Build response with the exact structure required
   return {
@@ -62,6 +62,6 @@ export function getSystemInfo(controller: ExtensionController): SystemInfo {
     vscodeVersion,
     os: osInfo,
     workspace,
-    timestamp: new Date().toISOString(),
+    timestamp: new Date().toISOString()
   };
 }

@@ -10,7 +10,8 @@
     "start": "node dist/standalone-ws-server.js",
     "clean": "rm -rf dist",
     "type-check": "tsc --noEmit",
-    "lint": "eslint . --ext .ts"
+    "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix"
   },
   "dependencies": {
     "agents-bridge-shared": "workspace:*",
