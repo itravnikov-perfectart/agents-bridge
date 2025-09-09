@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 
-import { createWriteStream } from 'fs';
-import * as path from "path"
-import { execa } from "execa"
-import { WebSocket } from 'ws';
-
+import {createWriteStream} from 'fs';
+import * as path from 'path';
+import {execa} from 'execa';
+import {WebSocket} from 'ws';
 
 class ContainerManager {
   private isShuttingDown = false;
-  private logStream = createWriteStream('/tmp/container.log', { flags: 'a' });
-  private workspaceDir = path.resolve("/workspace")
+  private logStream = createWriteStream('/tmp/container.log', {flags: 'a'});
+  private workspaceDir = path.resolve('/workspace');
 
   constructor() {
     this.log('🚀 Container Manager starting...');
@@ -23,28 +22,31 @@ class ContainerManager {
   }
 
   private async startVsCode(): Promise<void> {
-    const controller = new AbortController()
-    const cancelSignal = controller.signal
-  
-    // Команда для запуска VS Code
-    const codeCommand = `xvfb-run --auto-servernum --server-num=1 code --wait --log trace --disable-workspace-trust --disable-gpu --disable-lcd-text --no-sandbox --user-data-dir /app/.vscode --password-store="basic" -n ${this.workspaceDir}`
-  
-    console.log("🚀 Запуск VS Code...")
-    console.log(`Команда: ${codeCommand}`)
-  
-    const subprocess = execa({ shell: "/bin/bash", cancelSignal })`${codeCommand}`
-  
-    // Добавляем обработчики для вывода VS Code
-    subprocess.stdout?.on("data", (data) => {
-      console.log("VS Code stdout:", data.toString().trim())
-    })
-    subprocess.stderr?.on("data", (data) => {
-      console.log("VS Code stderr:", data.toString().trim())
-    })
+    const controller = new AbortController();
+    const cancelSignal = controller.signal;
 
-    	// Ждем запуска VS Code
-      console.log("⏳ Ожидание запуска VS Code...")
-      await new Promise((resolve) => setTimeout(resolve, 5000))
+    // Команда для запуска VS Code
+    const codeCommand = `xvfb-run --auto-servernum --server-num=1 code --wait --log trace --disable-workspace-trust --disable-gpu --disable-lcd-text --no-sandbox --user-data-dir /app/.vscode --password-store="basic" -n ${this.workspaceDir}`;
+
+    console.log('🚀 Запуск VS Code...');
+    console.log(`Команда: ${codeCommand}`);
+
+    const subprocess = execa({
+      shell: '/bin/bash',
+      cancelSignal
+    })`${codeCommand}`;
+
+    // Добавляем обработчики для вывода VS Code
+    subprocess.stdout?.on('data', (data) => {
+      console.log('VS Code stdout:', data.toString().trim());
+    });
+    subprocess.stderr?.on('data', (data) => {
+      console.log('VS Code stderr:', data.toString().trim());
+    });
+
+    // Ждем запуска VS Code
+    console.log('⏳ Ожидание запуска VS Code...');
+    await new Promise((resolve) => setTimeout(resolve, 5000));
   }
 
   public async start(): Promise<void> {
@@ -54,19 +56,18 @@ class ContainerManager {
 
       this.log('🎉 Container Manager started successfully');
       this.log('💡 Container is now running and waiting for commands.');
-      
+
       // Check WebSocket server connection
       await this.checkWebSocketConnection();
-      
+
       this.log('🔄 Container will run until shutdown command is received');
       this.log('');
       this.log('📋 To manually shutdown container, create file: /tmp/container-shutdown-signal');
 
       this.startVsCode();
-      
+
       // Keep the process alive
       this.keepAlive();
-
     } catch (error) {
       this.log(`❌ Failed to start services: ${error}`);
       this.shutdown();
@@ -90,9 +91,9 @@ class ContainerManager {
 
   private async checkWebSocketConnection(): Promise<void> {
     const wsUrl = process.env.AGENTS_BRIDGE_WS_URL || 'ws://host.docker.internal:8080';
-    
+
     this.log(`🔍 Проверка подключения к WebSocket серверу: ${wsUrl}`);
-    
+
     return new Promise((resolve) => {
       const ws = new WebSocket(wsUrl);
       let connectionChecked = false;

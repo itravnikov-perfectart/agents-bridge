@@ -1,8 +1,8 @@
-import { useState, useEffect } from 'react';
-import { X } from 'lucide-react';
-import { useAddAgentConfiguration } from '../queries/useAgentConfiguration';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { RooCodeSettings } from '@roo-code/types';
+import {useState, useEffect} from 'react';
+import {X} from 'lucide-react';
+import {useAddAgentConfiguration} from '../queries/useAgentConfiguration';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {RooCodeSettings} from '@roo-code/types';
 interface ConfigurationModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -10,15 +10,15 @@ interface ConfigurationModalProps {
   initialConfig?: RooCodeSettings;
 }
 
-export function ConfigurationModal({ 
-  isOpen, 
-  onClose, 
-  agentId, 
-  initialConfig 
+export function ConfigurationModal({
+  isOpen,
+  onClose,
+  agentId,
+  initialConfig
 }: ConfigurationModalProps) {
   const [configText, setConfigText] = useState('');
   const addAgentConfigMutation = useAddAgentConfiguration();
-  const { sendAgentConfiguration } = useWebSocketConnection();
+  const {sendAgentConfiguration} = useWebSocketConnection();
 
   // Update config text when initialConfig changes or modal opens
   useEffect(() => {
@@ -28,26 +28,33 @@ export function ConfigurationModal({
   }, [initialConfig, isOpen]);
 
   const handleSaveConfiguration = () => {
-    if (!agentId) return;
-    
+    if (!agentId) {
+      return;
+    }
+
     try {
       const parsedConfig = JSON.parse(configText) as RooCodeSettings;
       sendAgentConfiguration(agentId, parsedConfig);
-      addAgentConfigMutation.mutate({
-        id: agentId,
-        configuration: parsedConfig
-      }, {
-        onSuccess: () => {
-          onClose();
+      addAgentConfigMutation.mutate(
+        {
+          id: agentId,
+          configuration: parsedConfig
+        },
+        {
+          onSuccess: () => {
+            onClose();
+          }
         }
-      });
+      );
     } catch (error) {
       console.error('Invalid JSON configuration:', error);
       // TODO: Show error message to user
     }
   };
 
-  if (!isOpen) return null;
+  if (!isOpen) {
+    return null;
+  }
 
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
@@ -55,14 +62,11 @@ export function ConfigurationModal({
         {/* Modal Header */}
         <div className="flex items-center justify-between p-4 border-b border-border">
           <h2 className="text-lg font-semibold">Agent Configuration</h2>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-accent rounded-md transition-colors"
-          >
+          <button onClick={onClose} className="p-1 hover:bg-accent rounded-md transition-colors">
             <X className="h-5 w-5" />
           </button>
         </div>
-        
+
         {/* Modal Body */}
         <div className="flex-1 p-4 overflow-hidden">
           <textarea
@@ -72,7 +76,7 @@ export function ConfigurationModal({
             placeholder="Enter JSON configuration..."
           />
         </div>
-        
+
         {/* Modal Footer */}
         <div className="flex items-center justify-end gap-2 p-4 border-t border-border">
           <button

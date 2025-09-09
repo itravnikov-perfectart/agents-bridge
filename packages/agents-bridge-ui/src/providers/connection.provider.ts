@@ -1,36 +1,25 @@
-import React, {
-  createContext,
-  useContext,
-  useCallback,
-  useRef,
-  useEffect,
-  useState,
-} from 'react';
+import React, {createContext, useContext, useCallback, useRef, useEffect, useState} from 'react';
 import {
   ConnectionSource,
   Message,
   EMessageFromServer,
   EMessageFromUI,
   ESystemMessage,
-  EMessageFromAgent,
+  EMessageFromAgent
 } from 'agents-bridge-shared';
-import { useUpdateAgents, useRemoveAgent } from '../queries/useAgents';
+import {useUpdateAgents, useRemoveAgent} from '../queries/useAgents';
 import {
   getMessagesByTaskId,
   useAddMessage,
   useAddMessages,
-  useUpsertAgentStreamMessage,
+  useUpsertAgentStreamMessage
 } from '../queries/useMessages';
-import {
-  useAddTasks,
-  useUpdateTask,
-  getTasksByAgentId,
-} from '../queries/useTasks';
-import { useAddProfiles, useUpdateActiveProfile } from '../queries/useProfiles';
-import { useQueryClient } from '@tanstack/react-query';
-import { useSettings } from '../components/Settings';
-import { RooCodeEventName, RooCodeSettings } from '@roo-code/types';
-import { useAddAgentConfiguration } from '../queries/useAgentConfiguration';
+import {useAddTasks, useUpdateTask, getTasksByAgentId} from '../queries/useTasks';
+import {useAddProfiles, useUpdateActiveProfile} from '../queries/useProfiles';
+import {useQueryClient} from '@tanstack/react-query';
+import {useSettings} from '../components/Settings';
+import {RooCodeEventName, RooCodeSettings} from '@roo-code/types';
+import {useAddAgentConfiguration} from '../queries/useAgentConfiguration';
 
 export interface WebSocketContextType {
   isConnected: boolean;
@@ -77,17 +66,11 @@ export interface WebSocketContextType {
   onRemoteAgentCreated: (handler: (container: any) => void) => () => void;
   onRemoteAgentError: (handler: (error: string, action: string) => void) => () => void;
 
-  onConnectionStateChange: (
-    handler: (isConnected: boolean) => void
-  ) => () => void;
-  onLoadingStateChange: (
-    handler: (taskId: string, isLoading: boolean) => void
-  ) => () => void;
-  onTaskIdChange: (
-    handler: (oldTaskId: string, newTaskId: string) => void
-  ) => () => void;
+  onConnectionStateChange: (handler: (isConnected: boolean) => void) => () => void;
+  onLoadingStateChange: (handler: (taskId: string, isLoading: boolean) => void) => () => void;
+  onTaskIdChange: (handler: (oldTaskId: string, newTaskId: string) => void) => () => void;
   onTaskSpawned: (
-    handler: (args: { agentId: string; parentTaskId: string; childTaskId: string }) => void
+    handler: (args: {agentId: string; parentTaskId: string; childTaskId: string}) => void
   ) => () => void;
 }
 
@@ -105,14 +88,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   url = 'ws://localhost:8080',
   reconnectInterval = 1000,
   maxReconnectAttempts = 10,
-  heartbeatInterval = 30000,
+  heartbeatInterval = 30000
 }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isConnecting, setIsConnecting] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
 
   const queryClient = useQueryClient();
-  const { settings } = useSettings();
+  const {settings} = useSettings();
 
   const updateAgentsMutation = useUpdateAgents();
   const removeAgentMutation = useRemoveAgent();
@@ -123,14 +106,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
   const addTasksMutation = useAddTasks();
   const addProfilesMutation = useAddProfiles();
   const updateActiveProfileMutation = useUpdateActiveProfile();
-    const addAgentConfigurationMutation = useAddAgentConfiguration();
+  const addAgentConfigurationMutation = useAddAgentConfiguration();
 
   const wsRef = useRef<WebSocket | null>(null);
   const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const heartbeatIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const uiClientIdRef = useRef(
-    `ui-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`
-  );
+  const uiClientIdRef = useRef(`ui-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`);
   const requestedProfilesRef = useRef<Set<string>>(new Set());
   const requestedActiveProfileRef = useRef<Set<string>>(new Set());
   const requestedAgentConfigurationRef = useRef<Set<string>>(new Set());
@@ -146,17 +127,13 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       // Keep only the most recent 500 entries
       const entries = Array.from(processedMessageTimestamps.current);
       processedMessageTimestamps.current.clear();
-      entries
-        .slice(-500)
-        .forEach((entry) => processedMessageTimestamps.current.add(entry));
+      entries.slice(-500).forEach((entry) => processedMessageTimestamps.current.add(entry));
     }
   }, []);
 
-  const connectionHandlersRef = useRef<Set<(isConnected: boolean) => void>>(
-    new Set()
-  );
+  const connectionHandlersRef = useRef<Set<(isConnected: boolean) => void>>(new Set());
   const taskSpawnedHandlersRef = useRef<
-    Set<(args: { agentId: string; parentTaskId: string; childTaskId: string }) => void>
+    Set<(args: {agentId: string; parentTaskId: string; childTaskId: string}) => void>
   >(new Set());
 
   const clearTimers = useCallback(() => {
@@ -243,8 +220,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               task: {
                 id: message.event!.taskId?.toString() || '',
                 agentId: message.agent?.id || '',
-                isCompleted: true,
-              },
+                isCompleted: true
+              }
             });
             break;
           case RooCodeEventName.TaskCreated: {
@@ -258,9 +235,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 tasks: [
                   {
                     id: taskId,
-                    agentId,
-                  } as any,
-                ],
+                    agentId
+                  } as any
+                ]
               });
             }
             getActiveTaskIds(agentId);
@@ -272,8 +249,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               (message.event as any)?.parentTaskId?.toString?.() ||
               (message.event as any)?.taskId?.toString?.() ||
               '';
-            const childTaskId =
-              (message.event as any)?.childTaskId?.toString?.() || '';
+            const childTaskId = (message.event as any)?.childTaskId?.toString?.() || '';
             if (!childTaskId) {
               break;
             }
@@ -281,13 +257,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             // Mark that a spawn has occurred for this parent to avoid further auto-approval on parent
             if (parentTaskId) {
               spawnObservedForParentRef.current.add(parentTaskId);
-              console.info('[UI] TaskSpawned observed', { agentId, parentTaskId, childTaskId });
+              console.info('[UI] TaskSpawned observed', {
+                agentId,
+                parentTaskId,
+                childTaskId
+              });
             }
 
             // Infer child level from parent if available
             const tasksKey = getTasksByAgentId(agentId).queryKey;
-            const existingTasks =
-              (queryClient.getQueryData(tasksKey) as any[]) || [];
+            const existingTasks = (queryClient.getQueryData(tasksKey) as any[]) || [];
             const parentTask = existingTasks.find((t) => t.id === parentTaskId);
             const parentLevel = parentTask?.level ?? 0;
             const childLevel = parentLevel + 1;
@@ -300,9 +279,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   agentId,
                   parentTaskId: parentTaskId || undefined,
                   isSubtask: true,
-                  level: childLevel,
-                } as any,
-              ],
+                  level: childLevel
+                } as any
+              ]
             });
 
             // Also refresh active task ids to ensure child is tracked
@@ -311,14 +290,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             // Notify UI about spawned task so it can focus the child tab
             taskSpawnedHandlersRef.current.forEach((handler) => {
               try {
-                handler({ agentId, parentTaskId: parentTaskId || '', childTaskId });
+                handler({
+                  agentId,
+                  parentTaskId: parentTaskId || '',
+                  childTaskId
+                });
               } catch {}
             });
             break;
           }
           case RooCodeEventName.Message: {
-            const evt =
-              (message.event as any)?.message ?? (message.event as any);
+            const evt = (message.event as any)?.message ?? (message.event as any);
             const text = evt?.text || '';
             const isEmpty = !text;
             const isPartial = !!evt?.partial;
@@ -330,17 +312,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             // Create a unique key for this message to prevent duplicates
             // Include partial flag and text snippet to reduce over-aggressive dedupe for repeated partials with changing text
             const textHashPart =
-              typeof text === 'string' && text.length > 0
-                ? text.slice(0, 40)
-                : 'no-text';
+              typeof text === 'string' && text.length > 0 ? text.slice(0, 40) : 'no-text';
             const messageKey = `${message.event!.taskId}-${messageTimestamp || 'no-ts'}-${say || 'unknown'}-${isAsk ? 'ask' : 'normal'}-${isPartial ? 'partial' : 'final'}-${textHashPart}`;
 
             // For streaming messages (partial=true), we should allow updates to the same message
             // Only skip if it's a complete message (not partial) and we've seen it before
-            if (
-              !isPartial &&
-              processedMessageTimestamps.current.has(messageKey)
-            ) {
+            if (!isPartial && processedMessageTimestamps.current.has(messageKey)) {
               console.log('Skipping duplicate complete message:', messageKey);
               break;
             }
@@ -353,10 +330,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
             if (say === 'api_req_started') {
               // Trigger loading state for this task
-              triggerLoadingStateChange(
-                message.event!.taskId!.toString(),
-                true
-              );
+              triggerLoadingStateChange(message.event!.taskId!.toString(), true);
               break;
             }
 
@@ -374,16 +348,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
             if (isApiErrorPartial) {
               // Format the error message to be more user-friendly
-              let errorMessage =
-                text || 'An error occurred while processing the request.';
+              let errorMessage = text || 'An error occurred while processing the request.';
 
               // If it's a quota error, make it more user-friendly
-              if (
-                errorMessage.includes('quota') ||
-                errorMessage.includes('billing')
-              ) {
-                errorMessage =
-                  'API quota exceeded. Please check your OpenAI billing details.';
+              if (errorMessage.includes('quota') || errorMessage.includes('billing')) {
+                errorMessage = 'API quota exceeded. Please check your OpenAI billing details.';
               }
 
               addMessageMutation.mutate({
@@ -395,15 +364,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     error: errorMessage,
                     originalText: text,
                     taskId: message.event!.taskId!.toString(),
-                    agentId: message.agent?.id,
-                  }),
-                },
+                    agentId: message.agent?.id
+                  })
+                }
               });
               // Ensure loading indicator is cleared on API error
-              triggerLoadingStateChange(
-                message.event!.taskId!.toString(),
-                false
-              );
+              triggerLoadingStateChange(message.event!.taskId!.toString(), false);
               break;
             }
 
@@ -412,7 +378,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               if (!isAsk && say === 'text') {
                 upsertAgentStreamMessage.mutate({
                   taskId: message.event!.taskId!.toString(),
-                  content: text,
+                  content: text
                 });
               } else if (!isAsk && typeof say === 'string') {
                 // Stream non-text 'say' updates (e.g., api_req_retry_delayed)
@@ -421,17 +387,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     type: 'say',
                     say: say,
                     text: text,
-                    partial: true,
+                    partial: true
                   } as any;
                   upsertAgentStreamMessage.mutate({
                     taskId: message.event!.taskId!.toString(),
-                    content: JSON.stringify(payload),
+                    content: JSON.stringify(payload)
                   });
                 } catch {
                   // Fallback to plain text stream
                   upsertAgentStreamMessage.mutate({
                     taskId: message.event!.taskId!.toString(),
-                    content: text,
+                    content: text
                   });
                 }
               } else if (isAsk) {
@@ -461,29 +427,39 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                               agentId,
                               taskId,
                               alreadyApproved: autoApprovedNewTaskForTaskIdRef.current.has(taskId),
-                              spawnObserved: spawnObservedForParentRef.current.has(taskId),
+                              spawnObserved: spawnObservedForParentRef.current.has(taskId)
                             });
                             break;
                           }
                           autoApprovedNewTaskForTaskIdRef.current.add(taskId);
-                          console.info('[UI->WS] Auto-approve parent newTask tool', { agentId, taskId, tool: toolData.tool });
+                          console.info('[UI->WS] Auto-approve parent newTask tool', {
+                            agentId,
+                            taskId,
+                            tool: toolData.tool
+                          });
                           // Resume the parent task then approve
                           sendMessage({
                             type: EMessageFromUI.RooCodeCommand,
                             source: ConnectionSource.UI,
-                            agent: { id: agentId },
-                            data: { command: 'resumeTask', parameters: { taskId } },
-                            timestamp: Date.now(),
+                            agent: {id: agentId},
+                            data: {
+                              command: 'resumeTask',
+                              parameters: {taskId}
+                            },
+                            timestamp: Date.now()
                           });
                           // Small delay to let Roo set the current task context before pressing
                           setTimeout(() => {
-                            console.info('[UI->WS] Auto-approve newTask: pressPrimaryButton', { agentId, taskId });
+                            console.info('[UI->WS] Auto-approve newTask: pressPrimaryButton', {
+                              agentId,
+                              taskId
+                            });
                             sendMessage({
                               type: EMessageFromUI.RooCodeCommand,
                               source: ConnectionSource.UI,
-                              agent: { id: agentId },
-                              data: { command: 'pressPrimaryButton' },
-                              timestamp: Date.now(),
+                              agent: {id: agentId},
+                              data: {command: 'pressPrimaryButton'},
+                              timestamp: Date.now()
                             });
                           }, 300);
                           // Skip adding approval prompt to chat for this case
@@ -495,19 +471,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                         tool: toolData.tool,
                         data: toolData,
                         question: `Approve ${toolData.tool}?`,
-                        suggest: [{ answer: 'Approve' }, { answer: 'Deny' }],
+                        suggest: [{answer: 'Approve'}, {answer: 'Deny'}]
                       };
 
                       const taskKey = getMessagesByTaskId(
                         message.event!.taskId!.toString()
                       ).queryKey;
-                      const prev = queryClient.getQueryData(taskKey) as
-                        | any[]
-                        | undefined;
-                      const last =
-                        prev && prev.length > 0
-                          ? prev[prev.length - 1]
-                          : undefined;
+                      const prev = queryClient.getQueryData(taskKey) as any[] | undefined;
+                      const last = prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
                       let updated = false;
 
                       if (
@@ -518,24 +489,21 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                         try {
                           const parsed = JSON.parse(last.content);
                           if (parsed && parsed.type === 'tool_approval') {
-                            queryClient.setQueryData(
-                              taskKey,
-                              (old: any[] | undefined) => {
-                                const list = old ? old.slice() : [];
-                                if (list.length > 0) {
-                                  list[list.length - 1] = {
-                                    type: 'agent',
-                                    content: JSON.stringify(contentJson),
-                                  };
-                                } else {
-                                  list.push({
-                                    type: 'agent',
-                                    content: JSON.stringify(contentJson),
-                                  });
-                                }
-                                return list;
+                            queryClient.setQueryData(taskKey, (old: any[] | undefined) => {
+                              const list = old ? old.slice() : [];
+                              if (list.length > 0) {
+                                list[list.length - 1] = {
+                                  type: 'agent',
+                                  content: JSON.stringify(contentJson)
+                                };
+                              } else {
+                                list.push({
+                                  type: 'agent',
+                                  content: JSON.stringify(contentJson)
+                                });
                               }
-                            );
+                              return list;
+                            });
                             updated = true;
                           }
                         } catch {}
@@ -546,8 +514,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                           taskId: message.event!.taskId!.toString(),
                           message: {
                             type: 'agent',
-                            content: JSON.stringify(contentJson),
-                          },
+                            content: JSON.stringify(contentJson)
+                          }
                         });
                       }
                       // Ensure task is marked active while waiting for approval
@@ -557,8 +525,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                         task: {
                           id: message.event!.taskId!.toString(),
                           agentId: message.agent?.id || '',
-                          isCompleted: false,
-                        },
+                          isCompleted: false
+                        }
                       });
                       break;
                     }
@@ -574,17 +542,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     type: 'command_approval',
                     command: commandText,
                     question: `Execute command: ${commandText}`,
-                    suggest: [{ answer: 'Execute' }, { answer: 'Cancel' }],
+                    suggest: [{answer: 'Execute'}, {answer: 'Cancel'}]
                   };
 
-                  const taskKey = getMessagesByTaskId(
-                    message.event!.taskId!.toString()
-                  ).queryKey;
-                  const prev = queryClient.getQueryData(taskKey) as
-                    | any[]
-                    | undefined;
-                  const last =
-                    prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
+                  const taskKey = getMessagesByTaskId(message.event!.taskId!.toString()).queryKey;
+                  const prev = queryClient.getQueryData(taskKey) as any[] | undefined;
+                  const last = prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
                   let updated = false;
 
                   if (
@@ -595,24 +558,21 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     try {
                       const parsed = JSON.parse(last.content);
                       if (parsed && parsed.type === 'command_approval') {
-                        queryClient.setQueryData(
-                          taskKey,
-                          (old: any[] | undefined) => {
-                            const list = old ? old.slice() : [];
-                            if (list.length > 0) {
-                              list[list.length - 1] = {
-                                type: 'agent',
-                                content: JSON.stringify(contentJson),
-                              };
-                            } else {
-                              list.push({
-                                type: 'agent',
-                                content: JSON.stringify(contentJson),
-                              });
-                            }
-                            return list;
+                        queryClient.setQueryData(taskKey, (old: any[] | undefined) => {
+                          const list = old ? old.slice() : [];
+                          if (list.length > 0) {
+                            list[list.length - 1] = {
+                              type: 'agent',
+                              content: JSON.stringify(contentJson)
+                            };
+                          } else {
+                            list.push({
+                              type: 'agent',
+                              content: JSON.stringify(contentJson)
+                            });
                           }
-                        );
+                          return list;
+                        });
                         updated = true;
                       }
                     } catch {}
@@ -623,8 +583,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                       taskId: message.event!.taskId!.toString(),
                       message: {
                         type: 'agent',
-                        content: JSON.stringify(contentJson),
-                      },
+                        content: JSON.stringify(contentJson)
+                      }
                     });
                   }
                   // Ensure task is marked active while waiting for approval
@@ -634,32 +594,25 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     task: {
                       id: message.event!.taskId!.toString(),
                       agentId: message.agent?.id || '',
-                      isCompleted: false,
-                    },
+                      isCompleted: false
+                    }
                   });
                   break;
                 }
 
                 // Handle other ask messages (follow-up questions, etc.)
                 const candidates: string[] = [];
-                const rawSuggest = (evt?.suggest ||
-                  evt?.options ||
-                  evt?.choices ||
-                  []) as any[];
+                const rawSuggest = (evt?.suggest || evt?.options || evt?.choices || []) as any[];
                 if (Array.isArray(rawSuggest)) {
                   for (const s of rawSuggest) {
-                    const val =
-                      s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
+                    const val = s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
                     if (typeof val === 'string' && val.trim()) {
                       candidates.push(val.trim());
                     }
                   }
                 }
                 if (evt?.buttons) {
-                  const primary =
-                    evt.buttons.primary ??
-                    evt.buttons.ok ??
-                    evt.buttons.confirm;
+                  const primary = evt.buttons.primary ?? evt.buttons.ok ?? evt.buttons.confirm;
                   const secondary = evt.buttons.secondary ?? evt.buttons.cancel;
                   if (typeof primary === 'string' && primary.trim()) {
                     candidates.push(primary.trim());
@@ -669,16 +622,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   }
                 }
                 const question = (evt?.question ||
-                  (typeof evt?.ask === 'string'
-                    ? evt.ask
-                    : evt?.ask?.question) ||
+                  (typeof evt?.ask === 'string' ? evt.ask : evt?.ask?.question) ||
                   evt?.tool?.message ||
                   evt?.tool?.name ||
                   text ||
                   'Waiting for approval') as string;
                 const contentJson = {
                   question,
-                  suggest: candidates.map((answer) => ({ answer })),
+                  suggest: candidates.map((answer) => ({answer}))
                 };
                 // Skip if no usable content
                 if (
@@ -687,14 +638,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 ) {
                   break;
                 }
-                const taskKey = getMessagesByTaskId(
-                  message.event!.taskId!.toString()
-                ).queryKey;
-                const prev = queryClient.getQueryData(taskKey) as
-                  | any[]
-                  | undefined;
-                const last =
-                  prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
+                const taskKey = getMessagesByTaskId(message.event!.taskId!.toString()).queryKey;
+                const prev = queryClient.getQueryData(taskKey) as any[] | undefined;
+                const last = prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
                 let updated = false;
                 if (
                   last?.type === 'agent' &&
@@ -705,27 +651,23 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     const parsed = JSON.parse(last.content);
                     if (
                       parsed &&
-                      (parsed.question !== undefined ||
-                        Array.isArray(parsed.suggest))
+                      (parsed.question !== undefined || Array.isArray(parsed.suggest))
                     ) {
-                      queryClient.setQueryData(
-                        taskKey,
-                        (old: any[] | undefined) => {
-                          const list = old ? old.slice() : [];
-                          if (list.length > 0) {
-                            list[list.length - 1] = {
-                              type: 'agent',
-                              content: JSON.stringify(contentJson),
-                            };
-                          } else {
-                            list.push({
-                              type: 'agent',
-                              content: JSON.stringify(contentJson),
-                            });
-                          }
-                          return list;
+                      queryClient.setQueryData(taskKey, (old: any[] | undefined) => {
+                        const list = old ? old.slice() : [];
+                        if (list.length > 0) {
+                          list[list.length - 1] = {
+                            type: 'agent',
+                            content: JSON.stringify(contentJson)
+                          };
+                        } else {
+                          list.push({
+                            type: 'agent',
+                            content: JSON.stringify(contentJson)
+                          });
                         }
-                      );
+                        return list;
+                      });
                       updated = true;
                     }
                   } catch {}
@@ -735,8 +677,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     taskId: message.event!.taskId!.toString(),
                     message: {
                       type: 'agent',
-                      content: JSON.stringify(contentJson),
-                    },
+                      content: JSON.stringify(contentJson)
+                    }
                   });
                 }
                 // Ensure task is marked active while waiting for approval
@@ -746,8 +688,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   task: {
                     id: message.event!.taskId!.toString(),
                     agentId: message.agent?.id || '',
-                    isCompleted: false,
-                  },
+                    isCompleted: false
+                  }
                 });
               }
               break;
@@ -763,16 +705,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
             if (isApiErrorFinal) {
               // Format the error message to be more user-friendly
-              let errorMessage =
-                text || 'An error occurred while processing the request.';
+              let errorMessage = text || 'An error occurred while processing the request.';
 
               // If it's a quota error, make it more user-friendly
-              if (
-                errorMessage.includes('quota') ||
-                errorMessage.includes('billing')
-              ) {
-                errorMessage =
-                  'API quota exceeded. Please check your OpenAI billing details.';
+              if (errorMessage.includes('quota') || errorMessage.includes('billing')) {
+                errorMessage = 'API quota exceeded. Please check your OpenAI billing details.';
               }
 
               addMessageMutation.mutate({
@@ -784,15 +721,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     error: errorMessage,
                     originalText: text,
                     taskId: message.event!.taskId!.toString(),
-                    agentId: message.agent?.id,
-                  }),
-                },
+                    agentId: message.agent?.id
+                  })
+                }
               });
               // Ensure loading indicator is cleared on API error
-              triggerLoadingStateChange(
-                message.event!.taskId!.toString(),
-                false
-              );
+              triggerLoadingStateChange(message.event!.taskId!.toString(), false);
               break;
             }
 
@@ -805,9 +739,9 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   content: JSON.stringify({
                     type: 'say',
                     say: 'completion_result',
-                    text: text,
-                  }),
-                },
+                    text: text
+                  })
+                }
               });
 
               // Update task completion status only for main tasks
@@ -818,8 +752,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   task: {
                     id: message.event!.taskId!.toString(),
                     agentId: message.agent?.id || '',
-                    isCompleted: true,
-                  },
+                    isCompleted: true
+                  }
                 });
               }
               break;
@@ -831,7 +765,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             if (!isAsk && say === 'text') {
               upsertAgentStreamMessage.mutate({
                 taskId: message.event!.taskId!.toString(),
-                content: text,
+                content: text
               });
             } else {
               // For ask/approval or other structured messages
@@ -852,24 +786,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                       tool: toolPayload.tool,
                       data: toolPayload,
                       content:
-                        typeof toolPayload.content === 'string'
-                          ? toolPayload.content
-                          : undefined,
+                        typeof toolPayload.content === 'string' ? toolPayload.content : undefined
                     };
                   } catch {}
                 }
 
-                if (
-                  !finalJson &&
-                  typeof text === 'string' &&
-                  text.trim().startsWith('{')
-                ) {
+                if (!finalJson && typeof text === 'string' && text.trim().startsWith('{')) {
                   try {
                     const parsed = JSON.parse(text);
                     if (
                       parsed &&
-                      (parsed.question !== undefined ||
-                        Array.isArray(parsed.suggest))
+                      (parsed.question !== undefined || Array.isArray(parsed.suggest))
                     ) {
                       finalJson = parsed;
                     }
@@ -878,26 +805,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
                 if (!finalJson) {
                   const candidates: string[] = [];
-                  const rawSuggest = (evt?.suggest ||
-                    evt?.options ||
-                    evt?.choices ||
-                    []) as any[];
+                  const rawSuggest = (evt?.suggest || evt?.options || evt?.choices || []) as any[];
                   if (Array.isArray(rawSuggest)) {
                     for (const s of rawSuggest) {
-                      const val =
-                        s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
+                      const val = s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
                       if (typeof val === 'string' && val.trim()) {
                         candidates.push(val.trim());
                       }
                     }
                   }
                   if (evt?.buttons) {
-                    const primary =
-                      evt.buttons.primary ??
-                      evt.buttons.ok ??
-                      evt.buttons.confirm;
-                    const secondary =
-                      evt.buttons.secondary ?? evt.buttons.cancel;
+                    const primary = evt.buttons.primary ?? evt.buttons.ok ?? evt.buttons.confirm;
+                    const secondary = evt.buttons.secondary ?? evt.buttons.cancel;
                     if (typeof primary === 'string' && primary.trim()) {
                       candidates.push(primary.trim());
                     }
@@ -906,30 +825,21 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     }
                   }
                   const question = (evt?.question ||
-                    (typeof evt?.ask === 'string'
-                      ? evt.ask
-                      : evt?.ask?.question) ||
+                    (typeof evt?.ask === 'string' ? evt.ask : evt?.ask?.question) ||
                     evt?.tool?.message ||
                     evt?.tool?.name ||
-                    (typeof text === 'string' && text !== 'followup'
-                      ? text
-                      : '') ||
+                    (typeof text === 'string' && text !== 'followup' ? text : '') ||
                     'Waiting for approval') as string;
                   finalJson = {
                     question,
-                    suggest: candidates.map((answer) => ({ answer })),
+                    suggest: candidates.map((answer) => ({answer}))
                   };
                 }
 
                 // Replace last interactive message if exists; else append
-                const taskKey = getMessagesByTaskId(
-                  message.event!.taskId!.toString()
-                ).queryKey;
-                const prev = queryClient.getQueryData(taskKey) as
-                  | any[]
-                  | undefined;
-                const last =
-                  prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
+                const taskKey = getMessagesByTaskId(message.event!.taskId!.toString()).queryKey;
+                const prev = queryClient.getQueryData(taskKey) as any[] | undefined;
+                const last = prev && prev.length > 0 ? prev[prev.length - 1] : undefined;
                 let replaced = false;
                 if (
                   last?.type === 'agent' &&
@@ -940,27 +850,23 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     const parsedLast = JSON.parse(last.content);
                     if (
                       parsedLast &&
-                      (parsedLast.question !== undefined ||
-                        Array.isArray(parsedLast.suggest))
+                      (parsedLast.question !== undefined || Array.isArray(parsedLast.suggest))
                     ) {
-                      queryClient.setQueryData(
-                        taskKey,
-                        (old: any[] | undefined) => {
-                          const list = old ? old.slice() : [];
-                          if (list.length > 0) {
-                            list[list.length - 1] = {
-                              type: 'agent',
-                              content: JSON.stringify(finalJson),
-                            };
-                          } else {
-                            list.push({
-                              type: 'agent',
-                              content: JSON.stringify(finalJson),
-                            });
-                          }
-                          return list;
+                      queryClient.setQueryData(taskKey, (old: any[] | undefined) => {
+                        const list = old ? old.slice() : [];
+                        if (list.length > 0) {
+                          list[list.length - 1] = {
+                            type: 'agent',
+                            content: JSON.stringify(finalJson)
+                          };
+                        } else {
+                          list.push({
+                            type: 'agent',
+                            content: JSON.stringify(finalJson)
+                          });
                         }
-                      );
+                        return list;
+                      });
                       replaced = true;
                     }
                   } catch {}
@@ -970,8 +876,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                     taskId: message.event!.taskId!.toString(),
                     message: {
                       type: 'agent',
-                      content: JSON.stringify(finalJson),
-                    },
+                      content: JSON.stringify(finalJson)
+                    }
                   });
                 }
                 // Ensure task remains active while an ask is pending
@@ -981,22 +887,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   task: {
                     id: message.event!.taskId!.toString(),
                     agentId: message.agent?.id || '',
-                    isCompleted: false,
-                  },
+                    isCompleted: false
+                  }
                 });
                 // Clear loading state when final ask message is received
-                triggerLoadingStateChange(
-                  message.event!.taskId!.toString(),
-                  false
-                );
+                triggerLoadingStateChange(message.event!.taskId!.toString(), false);
               } else {
                 // Skip api_req_started messages - they should only trigger loading state
                 if (say === 'api_req_started') {
                   // Trigger loading state for this task
-                  triggerLoadingStateChange(
-                    message.event!.taskId!.toString(),
-                    true
-                  );
+                  triggerLoadingStateChange(message.event!.taskId!.toString(), true);
                 } else {
                   // Special handling for orchestrator subtask sections
                   const lowerSay = typeof say === 'string' ? say.toLowerCase() : '';
@@ -1016,27 +916,21 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                         content: JSON.stringify({
                           type: 'say',
                           say: lowerSay,
-                          text: text,
-                        }),
-                      },
+                          text: text
+                        })
+                      }
                     });
-                    triggerLoadingStateChange(
-                      message.event!.taskId!.toString(),
-                      false
-                    );
+                    triggerLoadingStateChange(message.event!.taskId!.toString(), false);
                     break;
                   }
                   // Non-ask structured, just append text
                   addMessageMutation.mutate({
                     taskId: message.event!.taskId!.toString(),
-                    message: { type: isUser ? 'user' : 'agent', content: text },
+                    message: {type: isUser ? 'user' : 'agent', content: text}
                   });
                   // Clear loading state when final message is received
                   if (!isUser) {
-                    triggerLoadingStateChange(
-                      message.event!.taskId!.toString(),
-                      false
-                    );
+                    triggerLoadingStateChange(message.event!.taskId!.toString(), false);
                   }
                 }
               }
@@ -1058,7 +952,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               updateTaskMutation.mutate({
                 agentId: message.agent?.id || '',
                 taskId,
-                task: { id: taskId, agentId: message.agent?.id || '', isCompleted: true },
+                task: {
+                  id: taskId,
+                  agentId: message.agent?.id || '',
+                  isCompleted: true
+                }
               });
             }
           } catch {}
@@ -1072,8 +970,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             (message.data?.activeTaskIds || []).map((taskId: string) => ({
               id: taskId,
               agentId: message.agent?.id || '',
-              isCompleted: false,
-            })) || [],
+              isCompleted: false
+            })) || []
         });
 
         // Automatically load task details for all active tasks to get proper titles
@@ -1090,21 +988,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           break;
         }
         const rawItems = message.data?.messages || message.data?.history || [];
-        const items = (Array.isArray(rawItems) ? rawItems : []).map(
-          (m: any) => {
-            if (m?.type && m?.content !== undefined) {
-              return m;
-            }
-            const content =
-              typeof m === 'string' ? m : (m?.text ?? m?.message ?? '');
-            return { type: 'agent', content };
+        const items = (Array.isArray(rawItems) ? rawItems : []).map((m: any) => {
+          if (m?.type && m?.content !== undefined) {
+            return m;
           }
-        );
+          const content = typeof m === 'string' ? m : (m?.text ?? m?.message ?? '');
+          return {type: 'agent', content};
+        });
         if (items.length > 0) {
-          addMessagesMutation.mutate({ taskId, messages: items });
+          addMessagesMutation.mutate({taskId, messages: items});
           addTasksMutation.mutate({
             agentId,
-            tasks: [{ id: taskId, agentId }],
+            tasks: [{id: taskId, agentId}]
           });
         }
         break;
@@ -1114,7 +1009,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         break;
 
       case EMessageFromAgent.RooCodeConfiguration:
-        addAgentConfigurationMutation.mutate({ id: message.agent?.id || '', configuration: message.data?.rooCodeConfiguration || {} });
+        addAgentConfigurationMutation.mutate({
+          id: message.agent?.id || '',
+          configuration: message.data?.rooCodeConfiguration || {}
+        });
         break;
       case EMessageFromAgent.RooCodeCommandResponse: {
         const cmd = message.data?.command as string | undefined;
@@ -1136,21 +1034,20 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 agentId,
                 taskData: h,
                 // Treat all history list entries as completed by definition
-                isCompleted: true,
+                isCompleted: true
               };
             })
             .filter((t: any) => t && t.id);
           if (tasks.length) {
             // Add history tasks without overriding existing active tasks
-            addTasksMutation.mutate({ agentId, tasks });
+            addTasksMutation.mutate({agentId, tasks});
             // Don't request getTaskDetails here - only when tab becomes active
           }
         }
         if (cmd === 'getTaskDetails') {
           const agentId = message.agent?.id || '';
           const res = message.data?.result || {};
-          const taskId =
-            res?.historyItem?.id || res?.taskId || message.data?.taskId || '';
+          const taskId = res?.historyItem?.id || res?.taskId || message.data?.taskId || '';
           if (!taskId) {
             break;
           }
@@ -1170,54 +1067,44 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
               // Extract display-friendly content:
               // 1) Prefer text inside <task> for user messages
-              const taskMatch = rawText.match(
-                /<task[\s\S]*?>[\s\S]*?<\/task>/i
-              );
+              const taskMatch = rawText.match(/<task[\s\S]*?>[\s\S]*?<\/task>/i);
               if (taskMatch && role === 'user') {
                 const inner = (taskMatch[0] || '')
                   .replace(/<task[\s\S]*?>/i, '')
                   .replace(/<\/task>/i, '')
                   .trim();
                 if (inner) {
-                  return { type: 'user' as const, content: inner };
+                  return {type: 'user' as const, content: inner};
                 }
               }
 
               // 2) If assistant asks a followup, convert to JSON {question, suggest}
               if (/<ask_followup_question[\s\S]*?>/i.test(rawText)) {
-                const qMatch = rawText.match(
-                  /<question>([\s\S]*?)<\/question>/i
-                );
+                const qMatch = rawText.match(/<question>([\s\S]*?)<\/question>/i);
                 const question = qMatch ? qMatch[1].trim() : '';
-                const suggest: Array<{ answer: string }> = [];
+                const suggest: Array<{answer: string}> = [];
                 const suggestRegex = /<suggest>([\s\S]*?)<\/suggest>/gi;
                 let s;
                 while ((s = suggestRegex.exec(rawText)) !== null) {
                   const ans = (s[1] || '').trim();
                   if (ans) {
-                    suggest.push({ answer: ans });
+                    suggest.push({answer: ans});
                   }
                 }
-                const payload = { question, suggest };
+                const payload = {question, suggest};
                 if (question || suggest.length) {
                   return {
                     type: 'agent' as const,
-                    content: JSON.stringify(payload),
+                    content: JSON.stringify(payload)
                   };
                 }
               }
 
               // 3) Otherwise, remove <environment_details> and other meta wrappers, keep remaining text
               let cleaned = rawText
-                .replace(
-                  /<environment_details[\s\S]*?<\/environment_details>/gi,
-                  ''
-                )
+                .replace(/<environment_details[\s\S]*?<\/environment_details>/gi, '')
                 .replace(/<thinking[\s\S]*?<\/thinking>/gi, '')
-                .replace(
-                  /<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi,
-                  ''
-                )
+                .replace(/<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi, '')
                 .trim();
 
               // Skip messages that are just "false" or other uninformative content
@@ -1231,10 +1118,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               }
 
               // Skip messages that are just file listings or directory structures
-              if (
-                cleaned.match(/^[\w\-\.\/\s]+$/i) &&
-                cleaned.split('\n').length > 10
-              ) {
+              if (cleaned.match(/^[\w\-\.\/\s]+$/i) && cleaned.split('\n').length > 10) {
                 return null;
               }
 
@@ -1249,25 +1133,22 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                   content: JSON.stringify({
                     type: 'say',
                     say: 'auto_followup',
-                    text: 'I found the package.json file. This appears to be an auto-followup to examine the project structure.',
-                  }),
+                    text: 'I found the package.json file. This appears to be an auto-followup to examine the project structure.'
+                  })
                 };
               }
 
               return {
                 type: (role === 'user' ? 'user' : 'agent') as 'user' | 'agent',
-                content: cleaned,
+                content: cleaned
               };
             })
-            .filter(
-              (x: any) =>
-                x !== null && typeof x.content === 'string' && x.content.trim()
-            );
+            .filter((x: any) => x !== null && typeof x.content === 'string' && x.content.trim());
           if (msgs.length) {
-            addMessagesMutation.mutate({ taskId, messages: msgs as any });
+            addMessagesMutation.mutate({taskId, messages: msgs as any});
             addTasksMutation.mutate({
               agentId,
-              tasks: [{ id: taskId, agentId }],
+              tasks: [{id: taskId, agentId}]
             });
           }
         }
@@ -1288,7 +1169,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           if (previousMessages && previousMessages.length > 0) {
             addMessagesMutation.mutate({
               taskId: message.data?.agentTaskId || '',
-              messages: previousMessages,
+              messages: previousMessages
             });
           }
 
@@ -1302,9 +1183,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
               }
 
               // Remove the old task with clientTaskId
-              const filtered = old.filter(
-                (task) => task.id !== message.data?.clientTaskId
-              );
+              const filtered = old.filter((task) => task.id !== message.data?.clientTaskId);
 
               // Add the new task with agentTaskId (if it doesn't already exist)
               const agentTaskExists = filtered.some(
@@ -1314,7 +1193,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
                 filtered.push({
                   id: message.data?.agentTaskId || '',
                   agentId: agentId,
-                  isNewTask: false,
+                  isNewTask: false
                 });
               }
 
@@ -1323,19 +1202,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           );
 
           // Notify about task ID change so UI can update selectedTaskId
-          triggerTaskIdChange(
-            message.data?.clientTaskId,
-            message.data?.agentTaskId
-          );
+          triggerTaskIdChange(message.data?.clientTaskId, message.data?.agentTaskId);
         } else {
           addTasksMutation.mutate({
             agentId: message.agent?.id || '',
             tasks: [
               {
                 id: message.data?.agentTaskId || '',
-                agentId: message.agent?.id || '',
-              },
-            ],
+                agentId: message.agent?.id || ''
+              }
+            ]
           });
         }
         break;
@@ -1344,9 +1220,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const connect = useCallback(() => {
     if (connectionAttempts >= maxReconnectAttempts) {
-      console.error(
-        '🚫 Достигнуто максимальное количество попыток переподключения'
-      );
+      console.error('🚫 Достигнуто максимальное количество попыток переподключения');
       setIsConnecting(false);
       return;
     }
@@ -1381,8 +1255,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         type: ESystemMessage.Register,
         source: ConnectionSource.UI,
         data: {
-          uiClientId: uiClientIdRef.current,
-        },
+          uiClientId: uiClientIdRef.current
+        }
       };
 
       try {
@@ -1402,7 +1276,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
             const pingMessage: Message = {
               type: ESystemMessage.Ping,
               source: ConnectionSource.UI,
-              data: { ping: true, timestamp: Date.now() },
+              data: {ping: true, timestamp: Date.now()}
             };
             websocket.send(JSON.stringify(pingMessage));
           } catch (error) {
@@ -1446,12 +1320,12 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
     // Обработчик закрытия соединения
     websocket.onclose = (event) => {
-      const { code, reason } = event;
+      const {code, reason} = event;
       console.log(`🔌 WebSocket соединение закрыто:`, {
         code,
         reason,
         wasClean: event.wasClean,
-        attempt: connectionAttempts,
+        attempt: connectionAttempts
       });
 
       setIsConnected(false);
@@ -1467,10 +1341,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
         connectionAttempts < maxReconnectAttempts;
 
       if (shouldReconnect) {
-        const delay = Math.min(
-          reconnectInterval * Math.pow(2, connectionAttempts),
-          30000
-        );
+        const delay = Math.min(reconnectInterval * Math.pow(2, connectionAttempts), 30000);
         // Reconnection scheduled
 
         reconnectTimeoutRef.current = setTimeout(() => {
@@ -1504,10 +1375,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
           }
         }
       } else {
-        console.warn(
-          '⚠️ WebSocket not connected, state:',
-          wsRef.current?.readyState
-        );
+        console.warn('⚠️ WebSocket not connected, state:', wsRef.current?.readyState);
         if (!isConnecting && !isConnected) {
           console.log('🔄 Auto-reconnecting...');
           connect();
@@ -1536,11 +1404,11 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getActiveTaskIds = useCallback(
     async (agentId: string) => {
-      console.info('[UI->WS] GetActiveTaskIds', { agentId });
+      console.info('[UI->WS] GetActiveTaskIds', {agentId});
       const message: Message = {
         type: EMessageFromUI.GetActiveTaskIds,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId}
       };
 
       sendMessage(message);
@@ -1552,7 +1420,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     console.info('[UI->WS] GetAgents');
     const message: Message = {
       type: EMessageFromUI.GetAgents,
-      source: ConnectionSource.UI,
+      source: ConnectionSource.UI
     };
 
     sendMessage(message);
@@ -1560,7 +1428,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getProfiles = useCallback(
     async (agentId: string) => {
-      console.info('[UI->WS] GetProfiles', { agentId });
+      console.info('[UI->WS] GetProfiles', {agentId});
       if (requestedProfilesRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1569,7 +1437,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const message: Message = {
         type: EMessageFromUI.GetProfiles,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId}
       };
 
       sendMessage(message);
@@ -1579,7 +1447,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getActiveProfile = useCallback(
     async (agentId: string) => {
-      console.info('[UI->WS] GetActiveProfile', { agentId });
+      console.info('[UI->WS] GetActiveProfile', {agentId});
       if (requestedActiveProfileRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1588,7 +1456,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const message: Message = {
         type: EMessageFromUI.GetActiveProfile,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId}
       };
 
       sendMessage(message);
@@ -1606,7 +1474,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const message: Message = {
         type: EMessageFromUI.GetConfiguration,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId}
       };
       console.log('🔄 Getting agent configuration for:', agentId, message);
 
@@ -1620,10 +1488,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const wsMessage: Message = {
         type: EMessageFromUI.SetConfiguration,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
           configuration
-        },
+        }
       };
       sendMessage(wsMessage);
     },
@@ -1632,7 +1500,7 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getTaskHistory = useCallback(
     async (agentId: string) => {
-      console.info('[UI->WS] RooCodeCommand:getTaskHistory', { agentId });
+      console.info('[UI->WS] RooCodeCommand:getTaskHistory', {agentId});
       if (requestedTaskHistoryRef.current.has(agentId)) {
         return; // Already requested for this agent
       }
@@ -1641,10 +1509,10 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
-          command: 'getTaskHistory',
-        },
+          command: 'getTaskHistory'
+        }
       };
       sendMessage(wsMessage);
     },
@@ -1653,15 +1521,18 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const getTaskDetails = useCallback(
     async (agentId: string, taskId: string) => {
-      console.info('[UI->WS] RooCodeCommand:getTaskDetails', { agentId, taskId });
+      console.info('[UI->WS] RooCodeCommand:getTaskDetails', {
+        agentId,
+        taskId
+      });
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
           command: 'getTaskDetails',
-          parameters: { taskId },
-        },
+          parameters: {taskId}
+        }
       };
       sendMessage(wsMessage);
     },
@@ -1670,15 +1541,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const resumeTask = useCallback(
     async (agentId: string, taskId: string) => {
-      console.info('[UI->WS] RooCodeCommand:resumeTask', { agentId, taskId });
+      console.info('[UI->WS] RooCodeCommand:resumeTask', {agentId, taskId});
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
           command: 'resumeTask',
-          parameters: { taskId },
-        },
+          parameters: {taskId}
+        }
       };
       sendMessage(wsMessage);
     },
@@ -1687,14 +1558,14 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const cancelCurrentTask = useCallback(
     async (agentId: string) => {
-      console.info('[UI->WS] RooCodeCommand:cancelCurrentTask', { agentId });
+      console.info('[UI->WS] RooCodeCommand:cancelCurrentTask', {agentId});
       const wsMessage: Message = {
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
-          command: 'cancelCurrentTask',
-        },
+          command: 'cancelCurrentTask'
+        }
       };
       sendMessage(wsMessage);
     },
@@ -1703,69 +1574,73 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const terminateTask = useCallback(
     async (agentId: string, taskId: string) => {
-      console.info('[UI->WS] TerminateTask', { agentId, taskId });
+      console.info('[UI->WS] TerminateTask', {agentId, taskId});
       // 1) Make the task current
       sendMessage({
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
-        data: { command: 'resumeTask', parameters: { taskId } },
-        timestamp: Date.now(),
+        agent: {id: agentId},
+        data: {command: 'resumeTask', parameters: {taskId}},
+        timestamp: Date.now()
       });
       // 2) Cancel current task
       sendMessage({
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
-        data: { command: 'cancelCurrentTask' },
-        timestamp: Date.now(),
+        agent: {id: agentId},
+        data: {command: 'cancelCurrentTask'},
+        timestamp: Date.now()
       });
     },
     [sendMessage]
   );
 
   const sendToolApprovalResponse = useCallback(
-    async (
-      agentId: string,
-      taskId: string,
-      approved: boolean,
-      _toolData?: any
-    ) => {
+    async (agentId: string, taskId: string, approved: boolean, _toolData?: any) => {
       // Do not send any approval messages if the task is already completed
       try {
         const tasksKey = getTasksByAgentId(agentId).queryKey;
         const tasks = (queryClient.getQueryData(tasksKey) as any[]) || [];
         const target = tasks.find((t) => t.id === taskId);
         if (target?.isCompleted) {
-          console.warn('Skipping approval send for completed task', { taskId, agentId });
+          console.warn('Skipping approval send for completed task', {
+            taskId,
+            agentId
+          });
           return;
         }
       } catch {}
 
       // Resume the intended task to make it current, then press the appropriate button
       // 1) Resume task
-      console.info('[UI->WS] RooCodeCommand:resumeTask (for approval)', { agentId, taskId });
+      console.info('[UI->WS] RooCodeCommand:resumeTask (for approval)', {
+        agentId,
+        taskId
+      });
       sendMessage({
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
           command: 'resumeTask',
-          parameters: { taskId },
+          parameters: {taskId}
         },
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
 
       // 2) Press primary/secondary button instead of sending a text message to the task
-      console.info('[UI->WS] RooCodeCommand:pressButton', { agentId, approved });
+      console.info('[UI->WS] RooCodeCommand:pressButton', {
+        agentId,
+        approved
+      });
       sendMessage({
         type: EMessageFromUI.RooCodeCommand,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
-          command: approved ? 'pressPrimaryButton' : 'pressSecondaryButton',
+          command: approved ? 'pressPrimaryButton' : 'pressSecondaryButton'
         },
-        timestamp: Date.now(),
+        timestamp: Date.now()
       });
     },
     [sendMessage]
@@ -1779,17 +1654,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       profile?: string | null,
       mode?: string | null
     ) => {
-      console.info('[UI->WS] CreateTask', { agentId, taskId, profile, mode });
+      console.info('[UI->WS] CreateTask', {agentId, taskId, profile, mode});
       const wsMessage: Message = {
         type: EMessageFromUI.CreateTask,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
+        agent: {id: agentId},
         data: {
           taskId,
           message,
-          ...(profile ? { profile } : {}),
-          ...(mode ? { mode } : {}),
-        },
+          ...(profile ? {profile} : {}),
+          ...(mode ? {mode} : {})
+        }
       };
 
       sendMessage(wsMessage);
@@ -1799,12 +1674,16 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
 
   const sendMessageToTask = useCallback(
     async (agentId: string, taskId: string, message: string) => {
-      console.info('[UI->WS] SendMessageToTask', { agentId, taskId, hasMessage: !!message });
+      console.info('[UI->WS] SendMessageToTask', {
+        agentId,
+        taskId,
+        hasMessage: !!message
+      });
       const wsMessage: Message = {
         type: EMessageFromUI.SendMessageToTask,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
-        data: { taskId, message },
+        agent: {id: agentId},
+        data: {taskId, message}
       };
 
       sendMessage(wsMessage);
@@ -1817,8 +1696,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const message: Message = {
         type: EMessageFromUI.CreateRemoteAgent,
         source: ConnectionSource.UI,
-        data: { workspacePath },
-        timestamp: Date.now(),
+        data: {workspacePath},
+        timestamp: Date.now()
       };
 
       sendMessage(message);
@@ -1831,8 +1710,8 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
       const message: Message = {
         type: EMessageFromUI.StopRemoteAgent,
         source: ConnectionSource.UI,
-        data: { agentId },
-        timestamp: Date.now(),
+        data: {agentId},
+        timestamp: Date.now()
       };
 
       sendMessage(message);
@@ -1840,27 +1719,24 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [sendMessage]
   );
 
-  const getRemoteAgents = useCallback(
-    async () => {
-      const message: Message = {
-        type: EMessageFromUI.GetRemoteAgents,
-        source: ConnectionSource.UI,
-        timestamp: Date.now(),
-      };
+  const getRemoteAgents = useCallback(async () => {
+    const message: Message = {
+      type: EMessageFromUI.GetRemoteAgents,
+      source: ConnectionSource.UI,
+      timestamp: Date.now()
+    };
 
-      sendMessage(message);
-    },
-    [sendMessage]
-  );
+    sendMessage(message);
+  }, [sendMessage]);
 
   const cloneRepository = useCallback(
     async (agentId: string, repoUrl: string, gitToken?: string) => {
       const message: Message = {
         type: EMessageFromUI.CloneRepo,
         source: ConnectionSource.UI,
-        agent: { id: agentId },
-        data: { repoUrl, gitToken },
-        timestamp: Date.now(),
+        agent: {id: agentId},
+        data: {repoUrl, gitToken},
+        timestamp: Date.now()
       };
 
       sendMessage(message);
@@ -1868,30 +1744,25 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     [sendMessage]
   );
 
-  const onConnectionStateChange = useCallback(
-    (handler: (isConnected: boolean) => void) => {
-      connectionHandlersRef.current.add(handler);
-      return () => {
-        connectionHandlersRef.current.delete(handler);
-      };
-    },
-    []
+  const onConnectionStateChange = useCallback((handler: (isConnected: boolean) => void) => {
+    connectionHandlersRef.current.add(handler);
+    return () => {
+      connectionHandlersRef.current.delete(handler);
+    };
+  }, []);
+
+  const loadingStateHandlersRef = useRef<Set<(taskId: string, isLoading: boolean) => void>>(
+    new Set()
+  );
+  const taskIdChangeHandlersRef = useRef<Set<(oldTaskId: string, newTaskId: string) => void>>(
+    new Set()
   );
 
-  const loadingStateHandlersRef = useRef<
-    Set<(taskId: string, isLoading: boolean) => void>
-  >(new Set());
-  const taskIdChangeHandlersRef = useRef<
-    Set<(oldTaskId: string, newTaskId: string) => void>
-  >(new Set());
+  const remoteAgentCreatedHandlersRef = useRef<Set<(container: any) => void>>(new Set());
 
-  const remoteAgentCreatedHandlersRef = useRef<
-    Set<(container: any) => void>
-  >(new Set());
-
-  const remoteAgentErrorHandlersRef = useRef<
-    Set<(error: string, action: string) => void>
-  >(new Set());
+  const remoteAgentErrorHandlersRef = useRef<Set<(error: string, action: string) => void>>(
+    new Set()
+  );
 
   const onLoadingStateChange = useCallback(
     (handler: (taskId: string, isLoading: boolean) => void) => {
@@ -1903,24 +1774,15 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     []
   );
 
-  const onTaskIdChange = useCallback(
-    (handler: (oldTaskId: string, newTaskId: string) => void) => {
-      taskIdChangeHandlersRef.current.add(handler);
-      return () => {
-        taskIdChangeHandlersRef.current.delete(handler);
-      };
-    },
-    []
-  );
+  const onTaskIdChange = useCallback((handler: (oldTaskId: string, newTaskId: string) => void) => {
+    taskIdChangeHandlersRef.current.add(handler);
+    return () => {
+      taskIdChangeHandlersRef.current.delete(handler);
+    };
+  }, []);
 
   const onTaskSpawned = useCallback(
-    (
-      handler: (args: {
-        agentId: string;
-        parentTaskId: string;
-        childTaskId: string;
-      }) => void
-    ) => {
+    (handler: (args: {agentId: string; parentTaskId: string; childTaskId: string}) => void) => {
       taskSpawnedHandlersRef.current.add(handler);
       return () => {
         taskSpawnedHandlersRef.current.delete(handler);
@@ -1929,31 +1791,25 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     []
   );
 
-  const triggerLoadingStateChange = useCallback(
-    (taskId: string, isLoading: boolean) => {
-      loadingStateHandlersRef.current.forEach((handler) => {
-        try {
-          handler(taskId, isLoading);
-        } catch (error) {
-          console.error('Error in loading state handler:', error);
-        }
-      });
-    },
-    []
-  );
+  const triggerLoadingStateChange = useCallback((taskId: string, isLoading: boolean) => {
+    loadingStateHandlersRef.current.forEach((handler) => {
+      try {
+        handler(taskId, isLoading);
+      } catch (error) {
+        console.error('Error in loading state handler:', error);
+      }
+    });
+  }, []);
 
-  const triggerTaskIdChange = useCallback(
-    (oldTaskId: string, newTaskId: string) => {
-      taskIdChangeHandlersRef.current.forEach((handler) => {
-        try {
-          handler(oldTaskId, newTaskId);
-        } catch (error) {
-          console.error('Error in task ID change handler:', error);
-        }
-      });
-    },
-    []
-  );
+  const triggerTaskIdChange = useCallback((oldTaskId: string, newTaskId: string) => {
+    taskIdChangeHandlersRef.current.forEach((handler) => {
+      try {
+        handler(oldTaskId, newTaskId);
+      } catch (error) {
+        console.error('Error in task ID change handler:', error);
+      }
+    });
+  }, []);
 
   // Эффект для автоматического подключения при монтировании
   useEffect(() => {
@@ -1972,51 +1828,39 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     };
   }, []);
 
-  const onRemoteAgentCreated = useCallback(
-    (handler: (container: any) => void) => {
-      remoteAgentCreatedHandlersRef.current.add(handler);
-      return () => {
-        remoteAgentCreatedHandlersRef.current.delete(handler);
-      };
-    },
-    []
-  );
+  const onRemoteAgentCreated = useCallback((handler: (container: any) => void) => {
+    remoteAgentCreatedHandlersRef.current.add(handler);
+    return () => {
+      remoteAgentCreatedHandlersRef.current.delete(handler);
+    };
+  }, []);
 
-  const onRemoteAgentError = useCallback(
-    (handler: (error: string, action: string) => void) => {
-      remoteAgentErrorHandlersRef.current.add(handler);
-      return () => {
-        remoteAgentErrorHandlersRef.current.delete(handler);
-      };
-    },
-    []
-  );
+  const onRemoteAgentError = useCallback((handler: (error: string, action: string) => void) => {
+    remoteAgentErrorHandlersRef.current.add(handler);
+    return () => {
+      remoteAgentErrorHandlersRef.current.delete(handler);
+    };
+  }, []);
 
-  const triggerRemoteAgentCreated = useCallback(
-    (container: any) => {
-      remoteAgentCreatedHandlersRef.current.forEach((handler) => {
-        try {
-          handler(container);
-        } catch (error) {
-          console.error('Error in remote agent created handler:', error);
-        }
-      });
-    },
-    []
-  );
+  const triggerRemoteAgentCreated = useCallback((container: any) => {
+    remoteAgentCreatedHandlersRef.current.forEach((handler) => {
+      try {
+        handler(container);
+      } catch (error) {
+        console.error('Error in remote agent created handler:', error);
+      }
+    });
+  }, []);
 
-  const triggerRemoteAgentError = useCallback(
-    (error: string, action: string) => {
-      remoteAgentErrorHandlersRef.current.forEach((handler) => {
-        try {
-          handler(error, action);
-        } catch (error) {
-          console.error('Error in remote agent error handler:', error);
-        }
-      });
-    },
-    []
-  );
+  const triggerRemoteAgentError = useCallback((error: string, action: string) => {
+    remoteAgentErrorHandlersRef.current.forEach((handler) => {
+      try {
+        handler(error, action);
+      } catch (error) {
+        console.error('Error in remote agent error handler:', error);
+      }
+    });
+  }, []);
 
   // Значение контекста
   const contextValue: WebSocketContextType = {
@@ -2048,23 +1892,17 @@ export const WebSocketProvider: React.FC<WebSocketProviderProps> = ({
     onRemoteAgentError,
     getAgentConfiguration,
     sendAgentConfiguration,
-    onTaskSpawned,
+    onTaskSpawned
   };
 
-  return React.createElement(
-    WebSocketContext.Provider,
-    { value: contextValue },
-    children
-  );
+  return React.createElement(WebSocketContext.Provider, {value: contextValue}, children);
 };
 
 // Хук для использования WebSocket контекста
 export const useWebSocketConnection = (): WebSocketContextType => {
   const context = useContext(WebSocketContext);
   if (!context) {
-    throw new Error(
-      'useWebSocketConnection должен использоваться внутри WebSocketProvider'
-    );
+    throw new Error('useWebSocketConnection должен использоваться внутри WebSocketProvider');
   }
   return context;
 };

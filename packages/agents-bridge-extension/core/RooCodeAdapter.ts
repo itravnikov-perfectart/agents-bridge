@@ -1,15 +1,15 @@
-import { logger } from "../utils/logger";
+import {logger} from '../utils/logger';
 import {
   RooCodeAPI,
   RooCodeSettings,
   ProviderSettings,
   ProviderSettingsEntry,
   RooCodeEventName,
-  HistoryItem,
-} from "@roo-code/types";
-import { Anthropic } from "@anthropic-ai/sdk";
-import { ExtensionBaseAdapter } from "./ExtensionBaseAdapter";
-import { TaskEvent } from "./types";
+  HistoryItem
+} from '@roo-code/types';
+import {Anthropic} from '@anthropic-ai/sdk';
+import {ExtensionBaseAdapter} from './ExtensionBaseAdapter';
+import {TaskEvent} from './types';
 
 export interface RooCodeMessageOptions {
   taskId?: string;
@@ -32,8 +32,7 @@ export interface SendMessageOptions {
  */
 export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   private taskEventQueues: Map<string, TaskEvent[]> = new Map();
-  private taskEventResolvers: Map<string, ((event: TaskEvent) => void)[]> =
-    new Map();
+  private taskEventResolvers: Map<string, ((event: TaskEvent) => void)[]> = new Map();
   private extensionId: string;
 
   constructor(extensionId: string) {
@@ -67,15 +66,15 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   private registerGlobalEventListeners(): void {
     if (!this.api) {
-      logger.error("RooCode API not available for event listeners");
+      logger.error('RooCode API not available for event listeners');
       return;
     }
 
     this.api.on(RooCodeEventName.Message, (data) => {
-      logger.debug("RooCode Message Event:", JSON.stringify(data, null, 2));
+      logger.debug('RooCode Message Event:', JSON.stringify(data, null, 2));
       this.enqueueEvent(data.taskId, {
         name: RooCodeEventName.Message,
-        data,
+        data
       });
     });
 
@@ -84,8 +83,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskCreated,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
@@ -94,37 +93,34 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskStarted,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
-    this.api.on(
-      RooCodeEventName.TaskCompleted,
-      (taskId, tokenUsage, toolUsage) => {
-        logger.info(`RooCode Task Completed: ${taskId}`);
-        logger.debug(`RooCode Task Completed Details: ${taskId}`, {
+    this.api.on(RooCodeEventName.TaskCompleted, (taskId, tokenUsage, toolUsage) => {
+      logger.info(`RooCode Task Completed: ${taskId}`);
+      logger.debug(`RooCode Task Completed Details: ${taskId}`, {
+        tokenUsage,
+        toolUsage
+      });
+      this.enqueueEvent(taskId, {
+        name: RooCodeEventName.TaskCompleted,
+        data: {
+          taskId,
           tokenUsage,
-          toolUsage,
-        });
-        this.enqueueEvent(taskId, {
-          name: RooCodeEventName.TaskCompleted,
-          data: {
-            taskId,
-            tokenUsage,
-            toolUsage,
-          },
-        });
-      },
-    );
+          toolUsage
+        }
+      });
+    });
 
     this.api.on(RooCodeEventName.TaskAborted, (taskId) => {
       logger.info(`RooCode Task Aborted: ${taskId}`);
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskAborted,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
@@ -133,8 +129,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskPaused,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
@@ -143,8 +139,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskUnpaused,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
@@ -154,8 +150,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         name: RooCodeEventName.TaskModeSwitched,
         data: {
           taskId,
-          mode,
-        },
+          mode
+        }
       });
     });
 
@@ -165,8 +161,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         name: RooCodeEventName.TaskSpawned,
         data: {
           taskId,
-          childTaskId,
-        },
+          childTaskId
+        }
       });
     });
 
@@ -175,24 +171,21 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       this.enqueueEvent(taskId, {
         name: RooCodeEventName.TaskAskResponded,
         data: {
-          taskId,
-        },
+          taskId
+        }
       });
     });
 
-    this.api.on(
-      RooCodeEventName.TaskTokenUsageUpdated,
-      (taskId, tokenUsage) => {
-        logger.debug(`RooCode Task Token Usage Updated: ${taskId}`, tokenUsage);
-        this.enqueueEvent(taskId, {
-          name: RooCodeEventName.TaskTokenUsageUpdated,
-          data: {
-            taskId,
-            tokenUsage,
-          },
-        });
-      },
-    );
+    this.api.on(RooCodeEventName.TaskTokenUsageUpdated, (taskId, tokenUsage) => {
+      logger.debug(`RooCode Task Token Usage Updated: ${taskId}`, tokenUsage);
+      this.enqueueEvent(taskId, {
+        name: RooCodeEventName.TaskTokenUsageUpdated,
+        data: {
+          taskId,
+          tokenUsage
+        }
+      });
+    });
 
     this.api.on(RooCodeEventName.TaskToolFailed, (taskId, tool, error) => {
       logger.error(`RooCode Task Tool Failed: ${taskId} - ${tool}`, error);
@@ -201,8 +194,8 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         data: {
           taskId,
           tool,
-          error,
-        },
+          error
+        }
       });
     });
   }
@@ -230,9 +223,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   /**
    * Create async generator for task events
    */
-  private async *createTaskEventStream(
-    taskId: string,
-  ): AsyncGenerator<TaskEvent, void, unknown> {
+  private async *createTaskEventStream(taskId: string): AsyncGenerator<TaskEvent, void, unknown> {
     try {
       while (true) {
         // Check if there are queued events
@@ -269,10 +260,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   private isTerminalEvent(event: TaskEvent): boolean {
     if (event.name === RooCodeEventName.Message) {
-      const { message } = (event as TaskEvent<RooCodeEventName.Message>).data;
+      const {message} = (event as TaskEvent<RooCodeEventName.Message>).data;
       if (!message.partial) {
         // Close stream if Roo is waiting for follow-up or result completed
-        if (message.ask === "followup" || message.say === "completion_result") {
+        if (message.ask === 'followup' || message.say === 'completion_result') {
           return true;
         }
       }
@@ -293,14 +284,12 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   /**
    * Start a new task and return async generator for events
    */
-  async *startNewTask(
-    options: RooCodeTaskOptions = {},
-  ): AsyncGenerator<TaskEvent, void, unknown> {
+  async *startNewTask(options: RooCodeTaskOptions = {}): AsyncGenerator<TaskEvent, void, unknown> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Starting new RooCode task");
+    logger.info('Starting new RooCode task');
 
     try {
       // Start the task
@@ -309,7 +298,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
       // Create and yield from event stream
       yield* this.createTaskEventStream(taskId);
     } catch (error) {
-      logger.error("Error starting new RooCode task:", error);
+      logger.error('Error starting new RooCode task:', error);
       throw error;
     }
   }
@@ -319,7 +308,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async resumeTask(taskId: string): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Resuming RooCode task: ${taskId}`);
@@ -336,13 +325,9 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         try {
           const clineStack = (this.api as any).sidebarProvider?.clineStack;
           if (clineStack && Array.isArray(clineStack)) {
-            const taskExists = clineStack.some(
-              (item: any) => item.taskId === taskId,
-            );
+            const taskExists = clineStack.some((item: any) => item.taskId === taskId);
             if (taskExists) {
-              logger.info(
-                `Task ${taskId} found in clineStack after ${attempts * 100}ms`,
-              );
+              logger.info(`Task ${taskId} found in clineStack after ${attempts * 100}ms`);
               clearInterval(checkInterval);
               resolve();
               return;
@@ -350,9 +335,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
           }
 
           if (attempts >= maxAttempts) {
-            logger.warn(
-              `Task ${taskId} not found in clineStack after ${maxAttempts * 100}ms`,
-            );
+            logger.warn(`Task ${taskId} not found in clineStack after ${maxAttempts * 100}ms`);
             clearInterval(checkInterval);
             resolve(); // Still resolve to not break the flow
           }
@@ -370,7 +353,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async isTaskInHistory(taskId: string): Promise<boolean> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return await this.api.isTaskInHistory(taskId);
@@ -381,7 +364,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getCurrentTaskStack(): string[] {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.getCurrentTaskStack();
@@ -392,10 +375,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async clearCurrentTask(lastMessage?: string): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Clearing RooCode current task");
+    logger.info('Clearing RooCode current task');
     await this.api.clearCurrentTask(lastMessage);
   }
 
@@ -404,10 +387,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async cancelCurrentTask(): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Canceling RooCode current task");
+    logger.info('Canceling RooCode current task');
     await this.api.cancelCurrentTask();
   }
 
@@ -417,16 +400,16 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async *sendMessage(
     message?: string,
     images?: string[],
-    options?: SendMessageOptions,
+    options?: SendMessageOptions
   ): AsyncGenerator<TaskEvent, void, unknown> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Sending message to RooCode current task");
+    logger.info('Sending message to RooCode current task');
 
     try {
-      const { taskId } = options || {};
+      const {taskId} = options || {};
 
       // Send the message
       await this.api.sendMessage(message, images);
@@ -436,7 +419,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
         yield* this.createTaskEventStream(taskId);
       }
     } catch (error) {
-      logger.error("Error sending message to RooCode task:", error);
+      logger.error('Error sending message to RooCode task:', error);
       throw error;
     }
   }
@@ -446,10 +429,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async pressPrimaryButton(): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Pressing RooCode primary button");
+    logger.info('Pressing RooCode primary button');
     await this.api.pressPrimaryButton();
   }
 
@@ -458,10 +441,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async pressSecondaryButton(): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Pressing RooCode secondary button");
+    logger.info('Pressing RooCode secondary button');
     await this.api.pressSecondaryButton();
   }
 
@@ -470,7 +453,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   isReady(): boolean {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.isReady();
@@ -481,7 +464,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getConfiguration(): RooCodeSettings {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.getConfiguration();
@@ -492,7 +475,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async setConfiguration(values: RooCodeSettings): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     await this.api.setConfiguration(values);
@@ -503,7 +486,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getProfiles(): string[] {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.getProfiles();
@@ -514,7 +497,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getProfileEntry(name: string): ProviderSettingsEntry | undefined {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.getProfileEntry(name);
@@ -526,10 +509,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async createProfile(
     name: string,
     profile?: ProviderSettings,
-    activate?: boolean,
+    activate?: boolean
   ): Promise<string> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Creating RooCode profile: ${name}`);
@@ -549,10 +532,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async updateProfile(
     name: string,
     profile: ProviderSettings,
-    activate?: boolean,
+    activate?: boolean
   ): Promise<string | undefined> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Updating RooCode profile: ${name}`);
@@ -565,10 +548,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
   async upsertProfile(
     name: string,
     profile: ProviderSettings,
-    activate?: boolean,
+    activate?: boolean
   ): Promise<string | undefined> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Upserting RooCode profile: ${name}`);
@@ -580,7 +563,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async deleteProfile(name: string): Promise<void> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Deleting RooCode profile: ${name}`);
@@ -592,7 +575,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getActiveProfile(): string | undefined {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     return this.api.getActiveProfile();
@@ -603,7 +586,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   async setActiveProfile(name: string): Promise<string | undefined> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Setting RooCode active profile: ${name}`);
@@ -615,10 +598,10 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
    */
   getTaskHistory(): HistoryItem[] {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
-    logger.info("Retrieving RooCode task history");
+    logger.info('Retrieving RooCode task history');
     const configuration = this.api.getConfiguration();
     const taskHistory = configuration.taskHistory || [];
     logger.info(`Retrieved ${taskHistory.length} task history items`);
@@ -636,7 +619,7 @@ export class RooCodeAdapter extends ExtensionBaseAdapter<RooCodeAPI> {
     apiConversationHistory: Anthropic.MessageParam[];
   }> {
     if (!this.api) {
-      throw new Error("RooCode API not available");
+      throw new Error('RooCode API not available');
     }
 
     logger.info(`Getting task with ID: ${taskId}`);

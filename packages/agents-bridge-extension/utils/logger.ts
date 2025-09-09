@@ -1,4 +1,4 @@
-import * as vscode from "vscode";
+import * as vscode from 'vscode';
 
 export class Logger {
   private readonly outputChannel: vscode.OutputChannel;
@@ -72,4 +72,4 @@ export class Logger {
   }
 }
 
-export const logger = new Logger("Agents Bridge");
+export const logger = new Logger('Agents Bridge');

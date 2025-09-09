@@ -11,13 +11,7 @@
     "shell": "docker exec -it agents-bridge-vscode bash",
     "stop": "docker stop agents-bridge-vscode || true"
   },
-  "keywords": [
-    "vscode",
-    "docker",
-    "roo-code",
-    "agents-bridge",
-    "remote-development"
-  ],
+  "keywords": ["vscode", "docker", "roo-code", "agents-bridge", "remote-development"],
   "type": "module",
   "exports": "./src/index.ts",
   "author": "Agents Bridge Team",

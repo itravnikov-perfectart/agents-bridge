@@ -1,19 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Send, User, Bot } from 'lucide-react';
+import React, {useState, useEffect, useRef, useMemo} from 'react';
+import {Send, User, Bot} from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
-import { cn } from '../utils/cn';
-import { useAddMessage, useMessagesByTaskId } from '../queries/useMessages';
-import { useActiveProfile, useProfiles } from '../queries/useProfiles';
-import { useWebSocketConnection } from '../providers/connection.provider';
+import {cn} from '../utils/cn';
+import {useAddMessage, useMessagesByTaskId} from '../queries/useMessages';
+import {useActiveProfile, useProfiles} from '../queries/useProfiles';
+import {useWebSocketConnection} from '../providers/connection.provider';
 
-import { useUpdateTask, useAddTask } from '../queries/useTasks';
-import {
-  ChatMessage,
-  ConnectionSource,
-  EMessageFromUI,
-} from 'agents-bridge-shared';
-import { ModeSelector } from './ModeSelector';
-import { useSettings } from './Settings';
+import {useUpdateTask, useAddTask} from '../queries/useTasks';
+import {ChatMessage, ConnectionSource, EMessageFromUI} from 'agents-bridge-shared';
+import {ModeSelector} from './ModeSelector';
+import {useSettings} from './Settings';
 
 // Default configuration for auto-approval timer (in seconds) - will be overridden by settings
 const DEFAULT_AUTO_APPROVAL_TIMEOUT = 10;
@@ -37,7 +33,7 @@ export const ChatWindow = ({
   parentTaskId,
   readOnly,
   onResumeTask,
-  onSetLoading,
+  onSetLoading
 }: ChatWindowProps) => {
   const {
     getProfiles,
@@ -46,15 +42,15 @@ export const ChatWindow = ({
     sendMessageToTask,
     sendToolApprovalResponse,
     terminateTask,
-    sendMessage,
+    sendMessage
   } = useWebSocketConnection();
-  const { settings } = useSettings();
+  const {settings} = useSettings();
 
   const addMessageMutation = useAddMessage();
   const addTaskMutation = useAddTask();
-  const { data: messages = [] } = useMessagesByTaskId(taskId);
-  const { data: profiles = [] } = useProfiles();
-  const { data: activeProfile } = useActiveProfile();
+  const {data: messages = []} = useMessagesByTaskId(taskId);
+  const {data: profiles = []} = useProfiles();
+  const {data: activeProfile} = useActiveProfile();
   const updateTaskMutation = useUpdateTask();
 
   const [message, setMessage] = useState('');
@@ -72,7 +68,7 @@ export const ChatWindow = ({
   }>({
     isRetrying: false,
     retryCount: 0,
-    retryTimeoutId: null,
+    retryTimeoutId: null
   });
 
   const [agentRetryCount, setAgentRetryCount] = useState<number>(0);
@@ -100,7 +96,7 @@ export const ChatWindow = ({
     const delay = getRetryDelay(retryCount);
 
     const timeoutId = setTimeout(() => {
-      setRetryState((prev) => ({ ...prev, isRetrying: true }));
+      setRetryState((prev) => ({...prev, isRetrying: true}));
 
       // Send the last user message again
       const lastUserMessage = allMessages
@@ -119,14 +115,14 @@ export const ChatWindow = ({
       setRetryState((prev) => ({
         ...prev,
         isRetrying: false,
-        retryTimeoutId: null,
+        retryTimeoutId: null
       }));
     }, delay);
 
     setRetryState((prev) => ({
       ...prev,
       retryCount: retryCount + 1,
-      retryTimeoutId: timeoutId,
+      retryTimeoutId: timeoutId
     }));
   };
 
@@ -137,7 +133,7 @@ export const ChatWindow = ({
     setRetryState({
       isRetrying: false,
       retryCount: 0,
-      retryTimeoutId: null,
+      retryTimeoutId: null
     });
   };
 
@@ -208,8 +204,7 @@ export const ChatWindow = ({
             parsed.type === 'tool_result' ||
             parsed.type === 'api_error' ||
             (parsed.type === 'say' &&
-              (parsed.say === 'completion_result' ||
-                parsed.say === 'auto_followup'))
+              (parsed.say === 'completion_result' || parsed.say === 'auto_followup'))
           ) {
             return true; // Always keep important JSON messages
           }
@@ -253,7 +248,7 @@ export const ChatWindow = ({
   }, [messages]);
 
   const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    messagesEndRef.current?.scrollIntoView({behavior: 'smooth'});
   };
 
   useEffect(() => {
@@ -269,10 +264,7 @@ export const ChatWindow = ({
 
   // Clear loading state when agent response is received
   useEffect(() => {
-    if (
-      isWaitingForResponse &&
-      allMessages.length > lastMessageCountRef.current
-    ) {
+    if (isWaitingForResponse && allMessages.length > lastMessageCountRef.current) {
       // New message received, clear loading state
       setLoading(false);
 
@@ -293,12 +285,12 @@ export const ChatWindow = ({
         sendMessage({
           type: EMessageFromUI.RooCodeCommand as any,
           source: ConnectionSource.UI as any,
-          agent: { id: agentId },
+          agent: {id: agentId},
           data: {
             command: 'switchMode',
-            parameters: { mode: selectedMode, taskId },
+            parameters: {mode: selectedMode, taskId}
           },
-          timestamp: Date.now(),
+          timestamp: Date.now()
         } as any);
       } catch (e) {
         console.error('Failed to send switchMode command:', e);
@@ -317,11 +309,16 @@ export const ChatWindow = ({
     setLoading(true);
 
     try {
-      console.info('[UI] ChatWindow: submit', { isNewTaskChat, taskId, agentId, selectedMode });
+      console.info('[UI] ChatWindow: submit', {
+        isNewTaskChat,
+        taskId,
+        agentId,
+        selectedMode
+      });
       if (!isNewTaskChat) {
         // Существующая задача - используем sendMessage
         // Don't add message locally - agent will send it back via WebSocket
-        console.info('[UI->WS] SendMessageToTask', { agentId, taskId });
+        console.info('[UI->WS] SendMessageToTask', {agentId, taskId});
         sendMessageToTask(agentId, taskId, messageText);
       } else {
         // Новая задача - используем startNewTask
@@ -331,10 +328,15 @@ export const ChatWindow = ({
           taskId: taskId,
           message: {
             type: 'user',
-            content: messageText,
-          },
+            content: messageText
+          }
         });
-        console.info('[UI->WS] CreateTask (from ChatWindow)', { agentId, taskId, profile, selectedMode });
+        console.info('[UI->WS] CreateTask (from ChatWindow)', {
+          agentId,
+          taskId,
+          profile,
+          selectedMode
+        });
         startNewTask(agentId, taskId, messageText, profile, selectedMode);
         updateTaskMutation.mutate({
           agentId,
@@ -342,8 +344,8 @@ export const ChatWindow = ({
           task: {
             id: taskId,
             agentId,
-            isNewTask: false,
-          },
+            isNewTask: false
+          }
         });
       }
     } catch (error) {
@@ -354,7 +356,7 @@ export const ChatWindow = ({
   const handleSendMessage = (message: string) => {
     // Set loading state when sending message
     setLoading(true);
-    console.info('[UI] ChatWindow: handleSendMessage', { agentId, taskId });
+    console.info('[UI] ChatWindow: handleSendMessage', {agentId, taskId});
     // Don't add message locally - agent will send it back via WebSocket
     sendMessageToTask(agentId, taskId, message);
   };
@@ -368,19 +370,17 @@ export const ChatWindow = ({
         </div>
       </div>
       <div className="flex-1 min-w-0">
-        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">
-          Agent
-        </div>
+        <div className="text-sm font-medium text-gray-900 dark:text-gray-100 mb-1">Agent</div>
         <div className="flex items-center space-x-2 text-sm text-gray-600 dark:text-gray-400">
           <div className="flex space-x-1">
             <div className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"></div>
             <div
               className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-              style={{ animationDelay: '0.1s' }}
+              style={{animationDelay: '0.1s'}}
             ></div>
             <div
               className="w-2 h-2 bg-blue-600 rounded-full animate-bounce"
-              style={{ animationDelay: '0.2s' }}
+              style={{animationDelay: '0.2s'}}
             ></div>
           </div>
           <span>Thinking...</span>
@@ -404,18 +404,14 @@ export const ChatWindow = ({
   // Track individual timers to prevent restarting
   const timersRef = useRef<Record<string, NodeJS.Timeout>>({});
 
-  const handleToolApproval = (
-    messageId: string,
-    approved: boolean,
-    data: any
-  ) => {
+  const handleToolApproval = (messageId: string, approved: boolean, data: any) => {
     setToolApprovalStates((prev) => ({
       ...prev,
       [messageId]: {
         ...prev[messageId],
         isApproved: approved,
-        isDenied: !approved,
-      },
+        isDenied: !approved
+      }
     }));
     sendToolApprovalResponse(agentId, taskId, approved, data);
   };
@@ -452,8 +448,8 @@ export const ChatWindow = ({
             [messageId]: {
               ...currentState,
               timeLeft: 0,
-              isApproved: true,
-            },
+              isApproved: true
+            }
           };
         }
 
@@ -461,8 +457,8 @@ export const ChatWindow = ({
           ...prev,
           [messageId]: {
             ...currentState,
-            timeLeft: currentState.timeLeft - 1,
-          },
+            timeLeft: currentState.timeLeft - 1
+          }
         };
       });
     }, 1000);
@@ -487,10 +483,7 @@ export const ChatWindow = ({
         (() => {
           try {
             const parsed = JSON.parse(msg.content);
-            return (
-              parsed.type === 'tool_approval' ||
-              parsed.type === 'command_approval'
-            );
+            return parsed.type === 'tool_approval' || parsed.type === 'command_approval';
           } catch {
             return false;
           }
@@ -512,18 +505,14 @@ export const ChatWindow = ({
 
         // Only start timer if this is a new approval request (not already processed)
         setToolApprovalStates((prev) => {
-          if (
-            !prev[messageId] ||
-            prev[messageId].isApproved ||
-            prev[messageId].isDenied
-          ) {
+          if (!prev[messageId] || prev[messageId].isApproved || prev[messageId].isDenied) {
             const newState = {
               ...prev,
               [messageId]: {
                 timeLeft: autoApprovalTimeout,
                 isApproved: false,
-                isDenied: false,
-              },
+                isDenied: false
+              }
             };
             // Start timer for new approval
             startTimer(messageId);
@@ -544,9 +533,7 @@ export const ChatWindow = ({
         (() => {
           try {
             const parsed = JSON.parse(msg.content);
-            return (
-              parsed.type === 'say' && parsed.say === 'api_req_retry_delayed'
-            );
+            return parsed.type === 'say' && parsed.say === 'api_req_retry_delayed';
           } catch {
             return false;
           }
@@ -580,12 +567,11 @@ export const ChatWindow = ({
             const state = toolApprovalStates[messageId] || {
               timeLeft: autoApprovalTimeout,
               isApproved: false,
-              isDenied: false,
+              isDenied: false
             };
 
             const progressPercentage =
-              ((autoApprovalTimeout - state.timeLeft) / autoApprovalTimeout) *
-              100;
+              ((autoApprovalTimeout - state.timeLeft) / autoApprovalTimeout) * 100;
 
             return (
               <div className="space-y-3">
@@ -598,9 +584,7 @@ export const ChatWindow = ({
                 {parsed.data?.todos && (
                   <div className="text-sm">
                     <strong>Action:</strong>{' '}
-                    {parsed.data.todos
-                      .map((todo: any) => todo.content)
-                      .join(', ')}
+                    {parsed.data.todos.map((todo: any) => todo.content).join(', ')}
                   </div>
                 )}
 
@@ -612,9 +596,7 @@ export const ChatWindow = ({
                       : ''}
                   </div>
                 ) : state.isDenied ? (
-                  <div className="text-red-600 dark:text-red-400 font-medium">
-                    ❌ Denied
-                  </div>
+                  <div className="text-red-600 dark:text-red-400 font-medium">❌ Denied</div>
                 ) : (
                   <>
                     {settings.showTimer && (
@@ -625,24 +607,20 @@ export const ChatWindow = ({
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                           <div
                             className="bg-green-600 h-2 rounded-full transition-all duration-1000 ease-linear"
-                            style={{ width: `${progressPercentage}%` }}
+                            style={{width: `${progressPercentage}%`}}
                           ></div>
                         </div>
                       </div>
                     )}
                     <div className="flex gap-2">
                       <button
-                        onClick={() =>
-                          handleToolApproval(messageId, true, null)
-                        }
+                        onClick={() => handleToolApproval(messageId, true, null)}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors text-sm"
                       >
                         ✅ Approve Now
                       </button>
                       <button
-                        onClick={() =>
-                          handleToolApproval(messageId, false, null)
-                        }
+                        onClick={() => handleToolApproval(messageId, false, null)}
                         className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors text-sm"
                       >
                         ❌ Deny
@@ -660,12 +638,11 @@ export const ChatWindow = ({
             const state = toolApprovalStates[messageId] || {
               timeLeft: autoApprovalTimeout,
               isApproved: false,
-              isDenied: false,
+              isDenied: false
             };
 
             const progressPercentage =
-              ((autoApprovalTimeout - state.timeLeft) / autoApprovalTimeout) *
-              100;
+              ((autoApprovalTimeout - state.timeLeft) / autoApprovalTimeout) * 100;
 
             return (
               <div className="space-y-3">
@@ -684,9 +661,7 @@ export const ChatWindow = ({
                     ✅ Auto-executed: {parsed.command}
                   </div>
                 ) : state.isDenied ? (
-                  <div className="text-red-600 dark:text-red-400 font-medium">
-                    ❌ Denied
-                  </div>
+                  <div className="text-red-600 dark:text-red-400 font-medium">❌ Denied</div>
                 ) : (
                   <>
                     {settings.showTimer && (
@@ -697,24 +672,20 @@ export const ChatWindow = ({
                         <div className="w-full bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                           <div
                             className="bg-green-600 h-2 rounded-full transition-all duration-1000 ease-linear"
-                            style={{ width: `${progressPercentage}%` }}
+                            style={{width: `${progressPercentage}%`}}
                           ></div>
                         </div>
                       </div>
                     )}
                     <div className="flex gap-2">
                       <button
-                        onClick={() =>
-                          handleToolApproval(messageId, true, null)
-                        }
+                        onClick={() => handleToolApproval(messageId, true, null)}
                         className="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md transition-colors text-sm"
                       >
                         ✅ Execute Now
                       </button>
                       <button
-                        onClick={() =>
-                          handleToolApproval(messageId, false, null)
-                        }
+                        onClick={() => handleToolApproval(messageId, false, null)}
                         className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md transition-colors text-sm"
                       >
                         ❌ Cancel
@@ -754,9 +725,7 @@ export const ChatWindow = ({
             parsed.type === 'file_content' ||
             (parsed.type === 'say' && parsed.text?.includes('```')) ||
             (parsed.type === 'say' && parsed.text?.includes('package.json')) ||
-            (parsed.type === 'say' &&
-              parsed.text?.includes('{') &&
-              parsed.text?.includes('"name"'))
+            (parsed.type === 'say' && parsed.text?.includes('{') && parsed.text?.includes('"name"'))
           ) {
             const content = parsed.content || parsed.text || '';
             const lines = content.split('\n');
@@ -786,10 +755,7 @@ export const ChatWindow = ({
                   <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg max-h-60 overflow-y-auto">
                     <div className="grid grid-cols-2 gap-1 text-sm">
                       {lines.slice(0, 20).map((line: string, index: number) => (
-                        <div
-                          key={index}
-                          className="truncate text-gray-700 dark:text-gray-300"
-                        >
+                        <div key={index} className="truncate text-gray-700 dark:text-gray-300">
                           {line.trim()}
                         </div>
                       ))}
@@ -838,10 +804,7 @@ export const ChatWindow = ({
                 .reverse()
                 .find((m) => m.type === 'user');
 
-              if (
-                lastUserMessage &&
-                typeof lastUserMessage.content === 'string'
-              ) {
+              if (lastUserMessage && typeof lastUserMessage.content === 'string') {
                 // Clean the message content before retrying
                 const cleanMessage = stripMeta(lastUserMessage.content).trim();
                 if (cleanMessage) {
@@ -849,30 +812,19 @@ export const ChatWindow = ({
                 }
               } else {
                 // Fallback: send a generic retry message
-                sendMessageToTask(
-                  agentId,
-                  taskId,
-                  'Please retry the previous request.'
-                );
+                sendMessageToTask(agentId, taskId, 'Please retry the previous request.');
               }
             };
 
             const handleAutoRetry = () => {
-              if (
-                settings.retryOnError &&
-                retryState.retryCount < settings.maxRetries
-              ) {
+              if (settings.retryOnError && retryState.retryCount < settings.maxRetries) {
                 scheduleRetry(retryState.retryCount);
               }
             };
 
             // Auto-retry on error if enabled in settings
             useEffect(() => {
-              if (
-                settings.retryOnError &&
-                retryState.retryCount === 0 &&
-                !retryState.isRetrying
-              ) {
+              if (settings.retryOnError && retryState.retryCount === 0 && !retryState.isRetrying) {
                 // Auto-start retry after a short delay
                 const autoRetryTimeout = setTimeout(() => {
                   handleAutoRetry();
@@ -880,11 +832,7 @@ export const ChatWindow = ({
 
                 return () => clearTimeout(autoRetryTimeout);
               }
-            }, [
-              settings.retryOnError,
-              retryState.retryCount,
-              retryState.isRetrying,
-            ]);
+            }, [settings.retryOnError, retryState.retryCount, retryState.isRetrying]);
 
             const handleStartNewTask = () => {
               // Create a new task with the same agent
@@ -894,10 +842,7 @@ export const ChatWindow = ({
                 .reverse()
                 .find((m) => m.type === 'user');
 
-              if (
-                lastUserMessage &&
-                typeof lastUserMessage.content === 'string'
-              ) {
+              if (lastUserMessage && typeof lastUserMessage.content === 'string') {
                 // Clean the message content before starting new task
                 const cleanMessage = stripMeta(lastUserMessage.content).trim();
                 if (cleanMessage) {
@@ -905,11 +850,7 @@ export const ChatWindow = ({
                 }
               } else {
                 // Fallback: start a new task with a generic message
-                startNewTask(
-                  agentId,
-                  newTaskId,
-                  'Please help me with a new task.'
-                );
+                startNewTask(agentId, newTaskId, 'Please help me with a new task.');
               }
             };
 
@@ -918,35 +859,29 @@ export const ChatWindow = ({
                 <div className="text-sm text-red-600 dark:text-red-400 font-medium">
                   ⚠️ API Error
                 </div>
-                <div className="text-sm text-red-700 dark:text-red-300">
-                  {parsed.error}
-                </div>
+                <div className="text-sm text-red-700 dark:text-red-300">{parsed.error}</div>
 
                 {retryState.isRetrying && (
                   <div className="text-sm text-blue-600 dark:text-blue-400">
                     🔄 Auto-retrying in{' '}
                     {Math.ceil(
                       (getRetryDelay(retryState.retryCount - 1) -
-                        (Date.now() -
-                          (retryState.retryTimeoutId ? Date.now() : 0))) /
+                        (Date.now() - (retryState.retryTimeoutId ? Date.now() : 0))) /
                         1000
                     )}{' '}
                     seconds...
                   </div>
                 )}
 
-                {!retryState.isRetrying &&
-                  retryState.retryCount === 0 &&
-                  settings.retryOnError && (
-                    <div className="text-sm text-blue-600 dark:text-blue-400">
-                      🔄 Auto-retry will start in 2 seconds...
-                    </div>
-                  )}
+                {!retryState.isRetrying && retryState.retryCount === 0 && settings.retryOnError && (
+                  <div className="text-sm text-blue-600 dark:text-blue-400">
+                    🔄 Auto-retry will start in 2 seconds...
+                  </div>
+                )}
 
                 {retryState.retryCount > 0 && !retryState.isRetrying && (
                   <div className="text-sm text-orange-600 dark:text-orange-400">
-                    ⚠️ Retry attempt {retryState.retryCount}/
-                    {settings.maxRetries} failed
+                    ⚠️ Retry attempt {retryState.retryCount}/{settings.maxRetries} failed
                   </div>
                 )}
 
@@ -972,8 +907,7 @@ export const ChatWindow = ({
                         onClick={handleAutoRetry}
                         className="px-4 py-2 bg-orange-600 hover:bg-orange-700 text-white rounded-md transition-colors text-sm"
                       >
-                        ⏰ Auto Retry (
-                        {getRetryDelay(retryState.retryCount) / 1000}s)
+                        ⏰ Auto Retry ({getRetryDelay(retryState.retryCount) / 1000}s)
                       </button>
                     )}
 
@@ -998,20 +932,14 @@ export const ChatWindow = ({
           }
 
           // Проверяем, есть ли вопрос и предложения
-          if (
-            parsed.question &&
-            parsed.suggest &&
-            Array.isArray(parsed.suggest)
-          ) {
+          if (parsed.question && parsed.suggest && Array.isArray(parsed.suggest)) {
             return (
               <div className="space-y-3">
                 <div className="font-medium">
                   <ReactMarkdown>{parsed.question}</ReactMarkdown>
                 </div>
                 <div className="space-y-2">
-                  <div className="text-sm text-muted-foreground">
-                    Варианты ответов:
-                  </div>
+                  <div className="text-sm text-muted-foreground">Варианты ответов:</div>
                   <div className="grid gap-2">
                     {parsed.suggest.map((suggestion: any, index: number) => (
                       <button
@@ -1119,9 +1047,7 @@ export const ChatWindow = ({
         if (cleaned.includes('❌ **API Error:**')) {
           return (
             <div className="space-y-2">
-              <div className="text-sm text-red-600 dark:text-red-400 font-medium">
-                ⚠️ API Error
-              </div>
+              <div className="text-sm text-red-600 dark:text-red-400 font-medium">⚠️ API Error</div>
               <div className="prose prose-sm dark:prose-invert max-w-none">
                 <ReactMarkdown>{cleaned}</ReactMarkdown>
               </div>
@@ -1130,9 +1056,7 @@ export const ChatWindow = ({
         }
 
         // Check if it's a file list (lots of file paths)
-        const lines = cleaned
-          .split('\n')
-          .filter((line) => line.trim().length > 0);
+        const lines = cleaned.split('\n').filter((line) => line.trim().length > 0);
         const isFileList =
           lines.length > 10 &&
           lines.every((line: string) => {
@@ -1156,10 +1080,7 @@ export const ChatWindow = ({
               <div className="bg-gray-50 dark:bg-gray-800 p-3 rounded-lg max-h-60 overflow-y-auto">
                 <div className="grid grid-cols-2 gap-1 text-sm">
                   {lines.slice(0, 20).map((line: string, index: number) => (
-                    <div
-                      key={index}
-                      className="truncate text-gray-700 dark:text-gray-300"
-                    >
+                    <div key={index} className="truncate text-gray-700 dark:text-gray-300">
                       {line.trim()}
                     </div>
                   ))}
@@ -1183,9 +1104,7 @@ export const ChatWindow = ({
           const contentLines = cleaned.split('\n');
           return (
             <div className="space-y-2">
-              <div className="font-medium text-blue-600 dark:text-blue-400">
-                📦 package.json
-              </div>
+              <div className="font-medium text-blue-600 dark:text-blue-400">📦 package.json</div>
               <div className="bg-gray-900 text-gray-100 p-4 rounded-lg overflow-x-auto">
                 <pre className="text-sm">
                   {contentLines.map((line: string, index: number) => (
@@ -1211,8 +1130,7 @@ export const ChatWindow = ({
       }
     } else {
       // Пользовательские сообщения тоже рендерим как Markdown (cleaned)
-      const cleaned =
-        typeof msg.content === 'string' ? stripMeta(msg.content) : '';
+      const cleaned = typeof msg.content === 'string' ? stripMeta(msg.content) : '';
       return (
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown>{cleaned}</ReactMarkdown>
@@ -1235,25 +1153,16 @@ export const ChatWindow = ({
             {allMessages.map((msg, index) => (
               <div
                 key={index}
-                className={cn(
-                  'flex gap-3 w-full',
-                  msg.type === 'user' ? 'ml-auto' : 'mr-auto'
-                )}
+                className={cn('flex gap-3 w-full', msg.type === 'user' ? 'ml-auto' : 'mr-auto')}
               >
                 {/* Аватар */}
                 <div
                   className={cn(
                     'w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0',
-                    msg.type === 'user'
-                      ? 'bg-primary/20 text-primary'
-                      : 'bg-secondary'
+                    msg.type === 'user' ? 'bg-primary/20 text-primary' : 'bg-secondary'
                   )}
                 >
-                  {msg.type === 'user' ? (
-                    <User className="h-4 w-4" />
-                  ) : (
-                    <Bot className="h-4 w-4" />
-                  )}
+                  {msg.type === 'user' ? <User className="h-4 w-4" /> : <Bot className="h-4 w-4" />}
                 </div>
 
                 {/* Сообщение */}
@@ -1294,9 +1203,7 @@ export const ChatWindow = ({
             <div className="flex items-start gap-3">
               <div className="flex-shrink-0">
                 <div className="w-8 h-8 bg-green-100 dark:bg-green-900 rounded-full flex items-center justify-center">
-                  <span className="text-green-600 dark:text-green-400 text-lg">
-                    ✓
-                  </span>
+                  <span className="text-green-600 dark:text-green-400 text-lg">✓</span>
                 </div>
               </div>
               <div className="flex-1">
@@ -1304,14 +1211,11 @@ export const ChatWindow = ({
                   Task Completed Successfully
                 </h3>
                 <p className="text-sm text-green-700 dark:text-green-300 mb-3">
-                  The current task has been completed. What would you like to do
-                  next?
+                  The current task has been completed. What would you like to do next?
                 </p>
                 <div className="flex gap-2">
                   <button
-                    onClick={() =>
-                      onResumeTask ? onResumeTask(taskId) : undefined
-                    }
+                    onClick={() => (onResumeTask ? onResumeTask(taskId) : undefined)}
                     className="inline-flex items-center gap-2 px-3 py-2 bg-green-600 hover:bg-green-700 text-white rounded-md text-sm transition-colors"
                   >
                     Continue This Task
@@ -1320,21 +1224,24 @@ export const ChatWindow = ({
                     onClick={() => {
                       const newTaskId = `new-task-${Date.now()}`;
                       // Create new task without starting conversation
-                      console.info('[UI] ChatWindow: Create New Task placeholder', { agentId, newTaskId });
+                      console.info('[UI] ChatWindow: Create New Task placeholder', {
+                        agentId,
+                        newTaskId
+                      });
                       addTaskMutation.mutate(
                         {
                           agentId: agentId,
                           task: {
                             id: newTaskId,
                             agentId: agentId,
-                            isNewTask: true,
-                          },
+                            isNewTask: true
+                          }
                         },
                         {
                           onSuccess: () => {
                             // Focus on the new task
                             onResumeTask?.(newTaskId);
-                          },
+                          }
                         }
                       );
                     }}
@@ -1344,7 +1251,10 @@ export const ChatWindow = ({
                   </button>
                   <button
                     onClick={() => {
-                      console.info('[UI->WS] TerminateTask (from ChatWindow)', { agentId, taskId });
+                      console.info('[UI->WS] TerminateTask (from ChatWindow)', {
+                        agentId,
+                        taskId
+                      });
                       terminateTask(agentId, taskId);
                     }}
                     className="inline-flex items-center gap-2 px-3 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md text-sm transition-colors"
@@ -1363,11 +1273,7 @@ export const ChatWindow = ({
               <textarea
                 value={message}
                 onChange={(e) => setMessage(e.target.value)}
-                placeholder={
-                  isNewTaskChat
-                    ? 'Start new task...'
-                    : 'Send message to task...'
-                }
+                placeholder={isNewTaskChat ? 'Start new task...' : 'Send message to task...'}
                 className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:cursor-not-allowed disabled:opacity-50 min-h-[60px] max-h-32"
                 onKeyDown={(e) => {
                   if (e.key === 'Enter' && !e.shiftKey) {
@@ -1382,9 +1288,7 @@ export const ChatWindow = ({
                 {/* Выбор профиля для новых чатов */}
                 {profiles.length > 0 && (
                   <div className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground">
-                      Profile:
-                    </span>
+                    <span className="text-xs text-muted-foreground">Profile:</span>
                     <select
                       value={selectedProfile || ''}
                       onChange={(e) => setSelectedProfile(e.target.value)}
@@ -1392,8 +1296,7 @@ export const ChatWindow = ({
                     >
                       {profiles.map((profile) => (
                         <option key={profile} value={profile}>
-                          {profile}{' '}
-                          {profile === activeProfile ? '(Active)' : ''}
+                          {profile} {profile === activeProfile ? '(Active)' : ''}
                         </option>
                       ))}
                     </select>
@@ -1420,9 +1323,7 @@ export const ChatWindow = ({
           </form>
         )}
         {readOnly && (
-          <div className="text-xs text-muted-foreground text-center py-2">
-            Read-only view
-          </div>
+          <div className="text-xs text-muted-foreground text-center py-2">Read-only view</div>
         )}
       </div>
     </div>

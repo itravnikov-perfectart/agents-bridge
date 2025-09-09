@@ -1,21 +1,20 @@
-import { Sidebar } from './Sidebar';
-import { ChatList } from './ChatList';
-import { ChatWindow } from './ChatWindow';
-import { Settings } from './Settings';
-import { useState, useEffect } from 'react';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { useTasksByAgentId } from '../queries/useTasks';
+import {Sidebar} from './Sidebar';
+import {ChatList} from './ChatList';
+import {ChatWindow} from './ChatWindow';
+import {Settings} from './Settings';
+import {useState, useEffect} from 'react';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {useTasksByAgentId} from '../queries/useTasks';
 
 export function App() {
   const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
-  const { onTaskIdChange } = useWebSocketConnection();
+  const {onTaskIdChange} = useWebSocketConnection();
 
-  const { isConnecting, isConnected, connectionAttempts } =
-    useWebSocketConnection();
-  const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const {isConnecting, isConnected, connectionAttempts} = useWebSocketConnection();
+  const {data: agentTasks} = useTasksByAgentId(selectedAgent);
 
   // Listen for task ID changes (when new tasks are created)
   useEffect(() => {
@@ -40,9 +39,7 @@ export function App() {
           <p className="text-muted-foreground">
             {isConnecting ? 'Connecting to server...' : 'Connection failed'}
           </p>
-          <p className="text-sm text-muted-foreground mt-2">
-            Attempts: {connectionAttempts}
-          </p>
+          <p className="text-sm text-muted-foreground mt-2">Attempts: {connectionAttempts}</p>
           {!isConnected && (
             <p className="text-sm text-muted-foreground">
               Please check if the server is running on ws://localhost:8080
@@ -92,10 +89,7 @@ export function App() {
         )}
       </div>
 
-      <Settings
-        isOpen={isSettingsOpen}
-        onClose={() => setIsSettingsOpen(false)}
-      />
+      <Settings isOpen={isSettingsOpen} onClose={() => setIsSettingsOpen(false)} />
     </div>
   );
 }

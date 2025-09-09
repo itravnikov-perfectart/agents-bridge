@@ -5,4 +5,4 @@ export type Agent = {
   lastHeartbeat: number;
   connectedAt: number;
   isRemote?: boolean;
-}
+};

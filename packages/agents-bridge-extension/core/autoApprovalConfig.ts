@@ -1,4 +1,4 @@
-import { RooCodeSettings } from "@roo-code/types";
+import {RooCodeSettings} from '@roo-code/types';
 
 /**
  * Auto-approval configuration for agents-bridge extension
@@ -25,7 +25,7 @@ export const AUTO_APPROVAL_CONFIG: RooCodeSettings = {
   followupAutoApproveTimeoutMs: 1, // Minimal timeout for follow-up questions
 
   // Command execution settings
-  allowedCommands: ["*"], // Allow all commands
+  allowedCommands: ['*'], // Allow all commands
   commandExecutionTimeout: 20,
   commandTimeoutAllowlist: [],
   preventCompletionWithOpenTodos: false,
@@ -42,12 +42,12 @@ export const AUTO_APPROVAL_CONFIG: RooCodeSettings = {
   maxReadFileLine: -1, // Enable full file reading
   includeDiagnosticMessages: true,
   maxDiagnosticMessages: 50,
-  language: "en",
-  telemetrySetting: "enabled",
+  language: 'en',
+  telemetrySetting: 'enabled',
   mcpEnabled: false,
   remoteControlEnabled: false,
-  mode: "code",
-  customModes: [],
+  mode: 'code',
+  customModes: []
 };
 
 /**
@@ -55,10 +55,12 @@ export const AUTO_APPROVAL_CONFIG: RooCodeSettings = {
  * @param overrides Optional configuration overrides
  * @returns RooCodeSettings with auto-approval enabled
  */
-export function createAutoApprovalTaskConfig(overrides: Partial<RooCodeSettings> = {}): RooCodeSettings {
+export function createAutoApprovalTaskConfig(
+  overrides: Partial<RooCodeSettings> = {}
+): RooCodeSettings {
   return {
     ...AUTO_APPROVAL_CONFIG,
-    ...overrides,
+    ...overrides
   };
 }
 
@@ -99,12 +101,12 @@ export const MANUAL_APPROVAL_CONFIG: RooCodeSettings = {
   maxReadFileLine: -1,
   includeDiagnosticMessages: true,
   maxDiagnosticMessages: 50,
-  language: "en",
-  telemetrySetting: "enabled",
+  language: 'en',
+  telemetrySetting: 'enabled',
   mcpEnabled: false,
   remoteControlEnabled: false,
-  mode: "code",
-  customModes: [],
+  mode: 'code',
+  customModes: []
 };
 
 /**
@@ -112,9 +114,11 @@ export const MANUAL_APPROVAL_CONFIG: RooCodeSettings = {
  * @param overrides Optional configuration overrides
  * @returns RooCodeSettings with manual approvals
  */
-export function createManualApprovalTaskConfig(overrides: Partial<RooCodeSettings> = {}): RooCodeSettings {
+export function createManualApprovalTaskConfig(
+  overrides: Partial<RooCodeSettings> = {}
+): RooCodeSettings {
   return {
     ...MANUAL_APPROVAL_CONFIG,
-    ...overrides,
+    ...overrides
   };
 }

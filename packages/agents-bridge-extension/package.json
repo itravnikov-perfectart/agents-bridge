@@ -8,12 +8,8 @@
   "engines": {
     "vscode": "^1.102.0"
   },
-  "categories": [
-    "Other"
-  ],
-  "activationEvents": [
-    "onStartupFinished"
-  ],
+  "categories": ["Other"],
+  "activationEvents": ["onStartupFinished"],
   "main": "./dist/extension.js",
   "contributes": {
     "commands": [
@@ -81,6 +77,7 @@
     "clean": "rm -rf dist out",
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
+    "lint:fix": "eslint . --ext .ts --fix",
     "package": "npm run build && vsce package --no-dependencies",
     "vscode:package": "npm run package"
   },

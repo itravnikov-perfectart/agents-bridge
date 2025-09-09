@@ -1,6 +1,6 @@
-import { spawn, exec } from 'child_process';
-import { promisify } from 'util';
-import { logger } from './serverLogger';
+import {spawn, exec} from 'child_process';
+import {promisify} from 'util';
+import {logger} from './serverLogger';
 import path from 'path';
 
 const execAsync = promisify(exec);
@@ -27,14 +27,14 @@ export class DockerManager {
   async createRemoteAgent(agentId: string, workspacePath?: string): Promise<RemoteAgentContainer> {
     const port = this.nextPort++;
     const containerName = `agents-bridge-remote-${agentId}`;
-    
+
     const container: RemoteAgentContainer = {
       id: agentId,
       name: containerName,
       status: 'creating',
       port,
       workspacePath: workspacePath || `/tmp/workspace-${agentId}`,
-      createdAt: Date.now(),
+      createdAt: Date.now()
     };
 
     this.containers.set(agentId, container);
@@ -48,23 +48,30 @@ export class DockerManager {
       const dockerArgs = [
         'run',
         '-d',
-        '--name', containerName,
+        '--name',
+        containerName,
         '--rm',
-        '-p', `${port}:3000`,
-        '-e', 'AGENTS_BRIDGE_WS_URL=ws://host.docker.internal:8080',
-        '-e', `WORKSPACE_PATH=${container.workspacePath}`,
-        '-e', `AGENT_ID=${agentId}`,
-        '-v', `${container.workspacePath}:/workspace`,
-        '--add-host', 'host.docker.internal:host-gateway',
+        '-p',
+        `${port}:3000`,
+        '-e',
+        'AGENTS_BRIDGE_WS_URL=ws://host.docker.internal:8080',
+        '-e',
+        `WORKSPACE_PATH=${container.workspacePath}`,
+        '-e',
+        `AGENT_ID=${agentId}`,
+        '-v',
+        `${container.workspacePath}:/workspace`,
+        '--add-host',
+        'host.docker.internal:host-gateway',
         'agents-bridge-remote'
       ];
 
-      const { stdout } = await execAsync(`docker ${dockerArgs.join(' ')}`);
+      const {stdout} = await execAsync(`docker ${dockerArgs.join(' ')}`);
       const containerId = stdout.trim();
-      
+
       container.containerId = containerId;
       container.status = 'running';
-      
+
       logger.info(`Remote agent container created successfully: ${containerName} (${containerId})`);
       return container;
     } catch (error) {
@@ -87,7 +94,7 @@ export class DockerManager {
         await execAsync(`docker stop ${container.containerId}`);
         logger.info(`Remote agent container stopped: ${container.name}`);
       }
-      
+
       container.status = 'stopped';
       this.containers.delete(agentId);
       return true;
@@ -114,20 +121,31 @@ export class DockerManager {
       logger.info('Docker image agents-bridge-remote already exists');
     } catch (error) {
       logger.info('Docker image agents-bridge-remote not found, building...');
-      
+
       // Build the image from the agents-bridge-remote directory
       const buildPath = path.join(__dirname, '../../agents-bridge-remote');
       const buildCommand = `docker build -t agents-bridge-remote -f ${buildPath}/Dockerfile ${path.join(__dirname, '../../..')}`;
-      
+
       logger.info(`Building Docker image with command: ${buildCommand}`);
-      
-      const buildProcess = spawn('docker', ['build', '-t', 'agents-bridge-remote', '-f', `${buildPath}/Dockerfile`, path.join(__dirname, '../../..')], {
-        stdio: 'pipe'
-      });
+
+      const buildProcess = spawn(
+        'docker',
+        [
+          'build',
+          '-t',
+          'agents-bridge-remote',
+          '-f',
+          `${buildPath}/Dockerfile`,
+          path.join(__dirname, '../../..')
+        ],
+        {
+          stdio: 'pipe'
+        }
+      );
 
       return new Promise((resolve, reject) => {
         let output = '';
-        
+
         buildProcess.stdout?.on('data', (data) => {
           const chunk = data.toString();
           output += chunk;
@@ -161,22 +179,24 @@ export class DockerManager {
   private async loadExistingContainers(): Promise<void> {
     try {
       // Get all running containers with our naming pattern
-      const { stdout } = await execAsync('docker ps --filter "name=agents-bridge-remote-" --format "{{.Names}}\t{{.ID}}\t{{.Status}}"');
-      
+      const {stdout} = await execAsync(
+        'docker ps --filter "name=agents-bridge-remote-" --format "{{.Names}}\t{{.ID}}\t{{.Status}}"'
+      );
+
       if (stdout.trim()) {
         const lines = stdout.trim().split('\n');
         for (const line of lines) {
           const [name, containerId, status] = line.split('\t');
           const agentId = name.replace('agents-bridge-remote-', '');
-          
+
           const container: RemoteAgentContainer = {
             id: agentId,
             containerId,
             name,
             status: status.includes('Up') ? 'running' : 'stopped',
-            createdAt: Date.now(),
+            createdAt: Date.now()
           };
-          
+
           this.containers.set(agentId, container);
           logger.info(`Found existing remote agent container: ${name} (${containerId})`);
         }

@@ -1,11 +1,7 @@
-import { logger } from "./serverLogger";
-import {
-  EConnectionSource,
-  ESystemMessage,
-  Message,
-} from "./types";
-import { v4 as uuidv4 } from "uuid";
-import { WebSocket } from "ws";
+import {logger} from './serverLogger';
+import {EConnectionSource, ESystemMessage, Message} from './types';
+import {v4 as uuidv4} from 'uuid';
+import {WebSocket} from 'ws';
 
 type AgentConnection = {
   id: string;
@@ -16,7 +12,7 @@ type AgentConnection = {
   gracePeriod?: boolean;
   workspacePath?: string;
   isRemote?: boolean;
-}
+};
 
 export class AgentManager {
   public agents = new Map<string, AgentConnection>();
@@ -39,9 +35,9 @@ export class AgentManager {
       lastHeartbeat: now,
       lastPingSent: 0,
       connectedAt: now,
-      workspacePath: workspacePath || "",
+      workspacePath: workspacePath || '',
       gracePeriod: true, // Don't ping immediately, give client time to establish
-      isRemote: isRemote || false,
+      isRemote: isRemote || false
     });
     logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
@@ -50,16 +46,19 @@ export class AgentManager {
       const agent = this.agents.get(agentId);
       if (agent) {
         agent.gracePeriod = false;
-        logger.info(
-          `Grace period ended for agent ${agentId}, will now send pings`,
-        );
+        logger.info(`Grace period ended for agent ${agentId}, will now send pings`);
       }
     }, 30000);
 
     return agentId;
   }
 
-  registerAgentWithId(agentId: string, socket: WebSocket, workspacePath?: string, isRemote?: boolean): string {
+  registerAgentWithId(
+    agentId: string,
+    socket: WebSocket,
+    workspacePath?: string,
+    isRemote?: boolean
+  ): string {
     const now = Date.now();
     this.agents.set(agentId, {
       id: agentId,
@@ -67,9 +66,9 @@ export class AgentManager {
       lastHeartbeat: now,
       lastPingSent: 0,
       connectedAt: now,
-      workspacePath: workspacePath || "",
+      workspacePath: workspacePath || '',
       gracePeriod: true, // Don't ping immediately, give client time to establish
-      isRemote: isRemote || false,
+      isRemote: isRemote || false
     });
     logger.info(`Agent ${agentId} registered with workspacePath:`, workspacePath);
 
@@ -101,20 +100,18 @@ export class AgentManager {
             source: EConnectionSource.Server,
             type: ESystemMessage.Ping,
             data: {
-              timestamp: now,
-            },
+              timestamp: now
+            }
           };
           agent.socket.send(JSON.stringify(messageToSend));
-          
+
           // Removed ping logging to reduce noise - only log connect/disconnect events
         } catch (error) {
           logger.error(`Failed to send ping to agent ${id}:`, error);
           this.agents.delete(id);
         }
       } else {
-        logger.warn(
-          `Agent ${id} socket not in OPEN state (${agent.socket.readyState}), removing`,
-        );
+        logger.warn(`Agent ${id} socket not in OPEN state (${agent.socket.readyState}), removing`);
         this.agents.delete(id);
       }
     });
@@ -171,13 +168,13 @@ export class AgentManager {
 
       if (timeSinceLastHeartbeat > effectiveTimeout) {
         logger.warn(
-          `Agent ${id} heartbeat timeout (${timeSinceLastHeartbeat}ms since last heartbeat, connected ${timeSinceConnected}ms ago, gracePeriod: ${agent.gracePeriod})`,
+          `Agent ${id} heartbeat timeout (${timeSinceLastHeartbeat}ms since last heartbeat, connected ${timeSinceConnected}ms ago, gracePeriod: ${agent.gracePeriod})`
         );
-        agent.socket.close(4001, "Heartbeat timeout");
+        agent.socket.close(4001, 'Heartbeat timeout');
         this.agents.delete(id);
       } else {
         logger.info(
-          `Agent ${id} healthy (${timeSinceLastHeartbeat}ms since last heartbeat, gracePeriod: ${agent.gracePeriod})`,
+          `Agent ${id} healthy (${timeSinceLastHeartbeat}ms since last heartbeat, gracePeriod: ${agent.gracePeriod})`
         );
       }
     });

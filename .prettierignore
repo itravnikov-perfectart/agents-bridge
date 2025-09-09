@@ -3,3 +3,9 @@ build
 coverage
 node_modules
 dist
+**/node_modules
+**/dist
+**/out
+**/bin
+**/.turbo
+.vscode

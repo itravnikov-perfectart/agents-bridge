@@ -17,10 +17,12 @@ packages/
 ## 🚀 Quick Start
 
 ### Prerequisites
+
 - Node.js 18+
 - pnpm 8+
 
 ### Installation
+
 ```bash
 # Install dependencies for all packages
 pnpm install
@@ -35,6 +37,7 @@ pnpm dev
 ## 📦 Package Commands
 
 ### Root Level Commands
+
 - `pnpm build` - Build all packages
 - `pnpm dev` - Start development mode for all packages
 - `pnpm lint` - Lint all packages
@@ -42,6 +45,7 @@ pnpm dev
 - `pnpm type-check` - Type check all packages
 
 ### Package-Specific Commands
+
 - `pnpm extension:build` - Build the VS Code extension
 - `pnpm server:dev` - Start the WebSocket server in development mode
 - `pnpm ui:dev` - Start the UI in development mode
@@ -50,14 +54,16 @@ pnpm dev
 ## 🏛️ Architecture
 
 ### agents-bridge-shared
+
 - **Purpose**: Common types, enums, and utility functions
 - **Usage**: Imported by all other packages
-- **Features**: 
+- **Features**:
   - Type definitions for messages, agents, and tasks
   - Validation schemas using Zod
   - Helper functions for common operations
 
 ### agents-bridge-extension
+
 - **Purpose**: VS Code extension for agent management
 - **Features**:
   - Tree view for agents and tasks
@@ -66,6 +72,7 @@ pnpm dev
 - **Build**: Uses esbuild for fast compilation
 
 ### agents-bridge-server
+
 - **Purpose**: WebSocket server for real-time communication
 - **Features**:
   - Agent registration and management
@@ -74,6 +81,7 @@ pnpm dev
 - **Dependencies**: Express, WebSocket, shared types
 
 ### agents-bridge-ui
+
 - **Purpose**: React-based web interface
 - **Features**:
   - Real-time agent monitoring
@@ -84,6 +92,7 @@ pnpm dev
 ## 🔧 Development
 
 ### Adding New Packages
+
 1. Create a new directory in `packages/`
 2. Add a `package.json` with `"private": true`
 3. Include `"agents-bridge-shared": "workspace:*"` in dependencies if needed
@@ -91,11 +100,13 @@ pnpm dev
 5. Run `pnpm install` to update workspace
 
 ### Code Sharing
+
 - **Types**: Define in `agents-bridge-shared/src/types/`
 - **Utilities**: Add to `agents-bridge-shared/src/utils/`
 - **Validation**: Use Zod schemas in `agents-bridge-shared/src/utils/validation.ts`
 
 ### Building Order
+
 1. Build shared package first: `pnpm --filter agents-bridge-shared run build`
 2. Build other packages: `pnpm build`
 

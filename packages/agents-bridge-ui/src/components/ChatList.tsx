@@ -1,21 +1,22 @@
-import React, { useState } from 'react';
+import React, {useState} from 'react';
 import {
   MessageCircle,
   Plus,
   Loader2,
   ChevronRight,
   FileText,
-  Settings, GitBranch
+  Settings,
+  GitBranch
 } from 'lucide-react';
-import { useQueryClient } from '@tanstack/react-query';
-import { useWebSocketConnection } from '../providers/connection.provider';
-import { getMessagesByTaskId } from '../queries/useMessages';
-import { useAddTask, useTasksByAgentId } from '../queries/useTasks';
-import { cn } from '../utils/cn';
-import { v4 as uuidv4 } from 'uuid';
-import { useAgentConfiguration } from '../queries/useAgentConfiguration';
-import { ConfigurationModal } from './ConfigurationModal';
-import { ConnectRepoModal } from './ConnectRepoModal';
+import {useQueryClient} from '@tanstack/react-query';
+import {useWebSocketConnection} from '../providers/connection.provider';
+import {getMessagesByTaskId} from '../queries/useMessages';
+import {useAddTask, useTasksByAgentId} from '../queries/useTasks';
+import {cn} from '../utils/cn';
+import {v4 as uuidv4} from 'uuid';
+import {useAgentConfiguration} from '../queries/useAgentConfiguration';
+import {ConfigurationModal} from './ConfigurationModal';
+import {ConnectRepoModal} from './ConnectRepoModal';
 
 interface ChatListProps {
   selectedAgent: string | null;
@@ -23,11 +24,7 @@ interface ChatListProps {
   onSelectTask: (taskId: string) => void;
 }
 
-export function ChatList({
-  selectedAgent,
-  selectedTaskId,
-  onSelectTask,
-}: ChatListProps) {
+export function ChatList({selectedAgent, selectedTaskId, onSelectTask}: ChatListProps) {
   const [view, setView] = useState<'active' | 'history'>('active');
   const [isCreatingTask, setIsCreatingTask] = useState(false);
   const [loadingTasks, setLoadingTasks] = useState<Set<string>>(new Set());
@@ -43,9 +40,9 @@ export function ChatList({
   } = useWebSocketConnection();
 
   const queryClient = useQueryClient();
-  const { data: agentTasks } = useTasksByAgentId(selectedAgent);
+  const {data: agentTasks} = useTasksByAgentId(selectedAgent);
 
-  const { data: agentConfig } = useAgentConfiguration(selectedAgent || '');
+  const {data: agentConfig} = useAgentConfiguration(selectedAgent || '');
 
   // Group tasks by hierarchy
   const groupTasksByHierarchy = (tasks: any[]) => {
@@ -74,9 +71,7 @@ export function ChatList({
     return hierarchicalTasks;
   };
 
-  const activeTasks = (agentTasks || []).filter(
-    (t: any) => t.isCompleted !== true
-  );
+  const activeTasks = (agentTasks || []).filter((t: any) => t.isCompleted !== true);
   const historyTasks = (agentTasks || [])
     .filter((t: any) => t.isCompleted === true)
     .sort((a: any, b: any) => {
@@ -85,12 +80,7 @@ export function ChatList({
       const bTime = b.taskData?.created_at || b.taskData?.createdAt;
 
       // If both have timestamps, sort by timestamp (newest first)
-      if (
-        aTime &&
-        bTime &&
-        typeof aTime === 'string' &&
-        typeof bTime === 'string'
-      ) {
+      if (aTime && bTime && typeof aTime === 'string' && typeof bTime === 'string') {
         try {
           return new Date(bTime).getTime() - new Date(aTime).getTime();
         } catch {
@@ -104,9 +94,7 @@ export function ChatList({
     });
 
   const visibleTasks =
-    view === 'active'
-      ? groupTasksByHierarchy(activeTasks)
-      : groupTasksByHierarchy(historyTasks);
+    view === 'active' ? groupTasksByHierarchy(activeTasks) : groupTasksByHierarchy(historyTasks);
 
   const finalVisibleTasks = visibleTasks;
 
@@ -118,17 +106,11 @@ export function ChatList({
     }
     let text = raw;
     // Remove environment and task blocks
-    text = text.replace(
-      /<environment_details[\s\S]*?<\/environment_details>/gi,
-      ''
-    );
+    text = text.replace(/<environment_details[\s\S]*?<\/environment_details>/gi, '');
     text = text.replace(/<task[\s\S]*?<\/task>/gi, '');
     // Remove thinking/follow-up blocks
     text = text.replace(/<thinking[\s\S]*?<\/thinking>/gi, '');
-    text = text.replace(
-      /<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi,
-      ''
-    );
+    text = text.replace(/<ask_followup_question[\s\S]*?<\/ask_followup_question>/gi, '');
     // If contains bracketed meta like [ask_followup_question ...] Result: ... → take the Result tail
     const resultIdx = text.indexOf('Result:');
     if (resultIdx !== -1) {
@@ -167,8 +149,7 @@ export function ChatList({
       // Try to get first message from task data
       if (taskData?.messages && Array.isArray(taskData.messages)) {
         for (const m of taskData.messages) {
-          const content =
-            typeof m?.content === 'string' ? (m.content as string) : '';
+          const content = typeof m?.content === 'string' ? (m.content as string) : '';
           const cleaned = sanitizeTitle(content).trim();
           if (cleaned) {
             return cleaned;
@@ -181,8 +162,7 @@ export function ChatList({
     if (Array.isArray(msgs) && msgs.length > 0) {
       // Walk messages from start to find the first meaningful line
       for (const m of msgs) {
-        const content =
-          typeof m?.content === 'string' ? (m.content as string) : '';
+        const content = typeof m?.content === 'string' ? (m.content as string) : '';
         const cleaned = sanitizeTitle(content).trim();
         if (cleaned) {
           return cleaned;
@@ -204,8 +184,8 @@ export function ChatList({
           task: {
             id: newTaskId,
             agentId: selectedAgent,
-            isNewTask: true,
-          },
+            isNewTask: true
+          }
         },
         {
           onSuccess: () => {
@@ -215,7 +195,7 @@ export function ChatList({
           onSettled: () => {
             // Reset the creating state after a short delay
             setTimeout(() => setIsCreatingTask(false), 1000);
-          },
+          }
         }
       );
     }
@@ -232,8 +212,6 @@ export function ChatList({
       setIsConnectRepoModalOpen(true);
     }
   };
-
-
 
   // Fetch both active tasks and task history when agent is selected
   React.useEffect(() => {
@@ -263,23 +241,20 @@ export function ChatList({
 
   // Listen for loading state changes from WebSocket connection
   React.useEffect(() => {
-    const unsubscribe = onLoadingStateChange(
-      (taskId: string, isLoading: boolean) => {
-        setLoadingTasks((prev) => {
-          const newSet = new Set(prev);
-          if (isLoading) {
-            newSet.add(taskId);
-          } else {
-            newSet.delete(taskId);
-          }
-          return newSet;
-        });
-      }
-    );
+    const unsubscribe = onLoadingStateChange((taskId: string, isLoading: boolean) => {
+      setLoadingTasks((prev) => {
+        const newSet = new Set(prev);
+        if (isLoading) {
+          newSet.add(taskId);
+        } else {
+          newSet.delete(taskId);
+        }
+        return newSet;
+      });
+    });
 
     return unsubscribe;
   }, [onLoadingStateChange]);
-
 
   if (!selectedAgent) {
     return (
@@ -357,18 +332,12 @@ export function ChatList({
           <div className="p-4 text-center text-muted-foreground">
             <MessageCircle className="h-8 w-8 mx-auto mb-2" />
             <p>No {view} chats</p>
-            {view === 'active' && (
-              <p className="text-sm">Create a new chat to get started</p>
-            )}
-            {view === 'history' && (
-              <p className="text-sm">Completed tasks will appear here</p>
-            )}
+            {view === 'active' && <p className="text-sm">Create a new chat to get started</p>}
+            {view === 'history' && <p className="text-sm">Completed tasks will appear here</p>}
           </div>
         ) : (
           finalVisibleTasks.map((task) => {
-            const messages =
-              queryClient.getQueryData(getMessagesByTaskId(task.id).queryKey) ||
-              [];
+            const messages = queryClient.getQueryData(getMessagesByTaskId(task.id).queryKey) || [];
             const name = pickTabLabel(task, messages as any[]);
             const isSubtask = task.isSubtask || task.parentTaskId;
             const level = task.level || 0;
@@ -380,13 +349,11 @@ export function ChatList({
                 className={cn(
                   'p-3 cursor-pointer transition-colors border-b border-border last:border-b-0',
                   'hover:bg-accent hover:text-accent-foreground',
-                  selectedTaskId === task.id
-                    ? 'bg-accent text-accent-foreground'
-                    : 'bg-background',
+                  selectedTaskId === task.id ? 'bg-accent text-accent-foreground' : 'bg-background',
                   isSubtask && 'border-l-2 border-muted-foreground/30'
                 )}
                 style={{
-                  paddingLeft: isSubtask ? `${12 + level * 16}px` : '12px',
+                  paddingLeft: isSubtask ? `${12 + level * 16}px` : '12px'
                 }}
               >
                 <div className="flex items-center gap-2">

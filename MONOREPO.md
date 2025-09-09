@@ -15,6 +15,7 @@ packages/
 ## Development Commands
 
 ### Root Level Commands
+
 - `pnpm build` - Build all packages
 - `pnpm dev` - Start development mode for all packages
 - `pnpm lint` - Lint all packages
@@ -22,6 +23,7 @@ packages/
 - `pnpm type-check` - Type check all packages
 
 ### Package-Specific Commands
+
 - `pnpm extension:build` - Build the VS Code extension
 - `pnpm server:dev` - Start the WebSocket server in development mode
 - `pnpm ui:dev` - Start the UI in development mode
@@ -30,22 +32,26 @@ packages/
 ## Package Dependencies
 
 ### agents-bridge-shared
+
 - Contains common types, enums, and utility functions
 - Used by all other packages
 - Exports validation schemas using Zod
 - Provides helper functions for common operations
 
 ### agents-bridge-extension
+
 - VS Code extension package
 - Depends on `agents-bridge-shared`
 - Builds using esbuild for fast compilation
 
 ### agents-bridge-server
+
 - WebSocket server implementation
 - Depends on `agents-bridge-shared`
 - Uses Express and WebSocket libraries
 
 ### agents-bridge-ui
+
 - React-based UI interface
 - Depends on `agents-bridge-shared`
 - Built with Vite and TypeScript
@@ -53,6 +59,7 @@ packages/
 ## Workspace Configuration
 
 The monorepo uses pnpm workspaces with the following configuration:
+
 - `pnpm-workspace.yaml` - Defines workspace packages
 - `tsconfig.json` - Project references for TypeScript
 - `.eslintrc.js` - Shared ESLint configuration
@@ -61,6 +68,7 @@ The monorepo uses pnpm workspaces with the following configuration:
 ## Adding New Packages
 
 To add a new package:
+
 1. Create a new directory in `packages/`
 2. Add a `package.json` with `"private": true`
 3. Include `"agents-bridge-shared": "workspace:*"` in dependencies if needed

@@ -1,102 +1,102 @@
 export enum ConnectionSource {
-  Agent = "agent",
-  UI = "ui",
-  Server = "server",
+  Agent = 'agent',
+  UI = 'ui',
+  Server = 'server'
 }
 
 export enum ESystemMessage {
-  Register = "register",
-  Unregister = "unregister",
-  Ping = "ping",
-  Pong = "pong",
-  Error = "error",
+  Register = 'register',
+  Unregister = 'unregister',
+  Ping = 'ping',
+  Pong = 'pong',
+  Error = 'error'
 }
 
 export enum EMessageFromServer {
-  Registered = "registered",
-  Unregistered = "unregistered",
-  Ping = "ping",
-  Error = "error",
-  AgentList = "agentList",
-  AgentUpdate = "agentUpdate",
-  RooCodeMessage = "rooCodeMessage",
-  RooCodeResponse = "rooCodeResponse",
-  RooCodePartial = "rooCodePartial",
-  RooCodeCommand = "rooCodeCommand",
-  CreateTask = "createTask",
-  ShutdownContainer = "shutdownContainer",
-  RemoteAgentCreated = "remoteAgentCreated",
-  RemoteAgentStopped = "remoteAgentStopped",
-  RemoteAgentsList = "remoteAgentsList",
-  RemoteAgentError = "remoteAgentError",
-  RepoCloned = "repoCloned",
-  RepoCloneError = "repoCloneError",
+  Registered = 'registered',
+  Unregistered = 'unregistered',
+  Ping = 'ping',
+  Error = 'error',
+  AgentList = 'agentList',
+  AgentUpdate = 'agentUpdate',
+  RooCodeMessage = 'rooCodeMessage',
+  RooCodeResponse = 'rooCodeResponse',
+  RooCodePartial = 'rooCodePartial',
+  RooCodeCommand = 'rooCodeCommand',
+  CreateTask = 'createTask',
+  ShutdownContainer = 'shutdownContainer',
+  RemoteAgentCreated = 'remoteAgentCreated',
+  RemoteAgentStopped = 'remoteAgentStopped',
+  RemoteAgentsList = 'remoteAgentsList',
+  RemoteAgentError = 'remoteAgentError',
+  RepoCloned = 'repoCloned',
+  RepoCloneError = 'repoCloneError'
 }
 
 export enum EMessageFromUI {
-  GetAgents = "getAgents",
-  CreateTask = "createTask",
-  SendMessageToTask = "sendMessageToTask",
-  GetActiveTaskIds = "getActiveTaskIds",
-  GetProfiles = "getProfiles",
-  GetActiveProfile = "getActiveProfile",
-  SetConfiguration = "setConfiguration",
-  Register = "register",
-  Unregister = "unregister",
-  SendToRooCode = "sendToRooCode",
-  RooCodeCommand = "rooCodeCommand",
-  GetConfiguration = "getConfiguration",
-  CreateRemoteAgent = "createRemoteAgent",
-  StopRemoteAgent = "stopRemoteAgent",
-  GetRemoteAgents = "getRemoteAgents",
-  CloneRepo = "cloneRepo",
+  GetAgents = 'getAgents',
+  CreateTask = 'createTask',
+  SendMessageToTask = 'sendMessageToTask',
+  GetActiveTaskIds = 'getActiveTaskIds',
+  GetProfiles = 'getProfiles',
+  GetActiveProfile = 'getActiveProfile',
+  SetConfiguration = 'setConfiguration',
+  Register = 'register',
+  Unregister = 'unregister',
+  SendToRooCode = 'sendToRooCode',
+  RooCodeCommand = 'rooCodeCommand',
+  GetConfiguration = 'getConfiguration',
+  CreateRemoteAgent = 'createRemoteAgent',
+  StopRemoteAgent = 'stopRemoteAgent',
+  GetRemoteAgents = 'getRemoteAgents',
+  CloneRepo = 'cloneRepo'
 }
 
 export enum EMessageFromAgent {
-  Register = "register",
-  Unregister = "unregister",
-  Pong = "pong",
-  Ping = "ping",
-  AgentResponse = "agentResponse",
-  ActiveTaskIdsResponse = "activeTaskIdsResponse",
-  ProfilesResponse = "profilesResponse", 
-  ActiveProfileResponse = "activeProfileResponse",
-  TaskStartedResponse = "taskStartedResponse",
-  MessageSentResponse = "messageSentResponse",
-  ConfigurationApplied = "configurationApplied",
-  RooCodeResponse = "rooCodeResponse",
-  RooCodeEvent = "rooCodeEvent",
-  RooCodeCommandResponse = "rooCodeCommandResponse",
-  RooCodeStatus = "rooCodeStatus",
-  RooCodeConfiguration = "rooCodeConfiguration",
-  RooCodeProfiles = "rooCodeProfiles",
-  RooCodeTaskHistory = "rooCodeTaskHistory",
-  RooCodeTaskDetails = "rooCodeTaskDetails",
+  Register = 'register',
+  Unregister = 'unregister',
+  Pong = 'pong',
+  Ping = 'ping',
+  AgentResponse = 'agentResponse',
+  ActiveTaskIdsResponse = 'activeTaskIdsResponse',
+  ProfilesResponse = 'profilesResponse',
+  ActiveProfileResponse = 'activeProfileResponse',
+  TaskStartedResponse = 'taskStartedResponse',
+  MessageSentResponse = 'messageSentResponse',
+  ConfigurationApplied = 'configurationApplied',
+  RooCodeResponse = 'rooCodeResponse',
+  RooCodeEvent = 'rooCodeEvent',
+  RooCodeCommandResponse = 'rooCodeCommandResponse',
+  RooCodeStatus = 'rooCodeStatus',
+  RooCodeConfiguration = 'rooCodeConfiguration',
+  RooCodeProfiles = 'rooCodeProfiles',
+  RooCodeTaskHistory = 'rooCodeTaskHistory',
+  RooCodeTaskDetails = 'rooCodeTaskDetails'
 }
 
 // RooCode command set used across UI/Server/Extension
 export enum ERooCodeCommand {
-  GetStatus = "getStatus",
-  GetConfiguration = "getConfiguration",
-  SetConfiguration = "setConfiguration",
-  GetProfiles = "getProfiles",
-  GetActiveProfile = "getActiveProfile",
-  SetActiveProfile = "setActiveProfile",
-  CreateProfile = "createProfile",
-  UpdateProfile = "updateProfile",
-  DeleteProfile = "deleteProfile",
-  GetTaskHistory = "getTaskHistory",
-  GetTaskDetails = "getTaskDetails",
-  ClearCurrentTask = "clearCurrentTask",
-  CancelCurrentTask = "cancelCurrentTask",
-  ResumeTask = "resumeTask",
-  PressPrimaryButton = "pressPrimaryButton",
-  PressSecondaryButton = "pressSecondaryButton",
-  SendMessage = "sendMessage",
-  StartNewTask = "startNewTask",
+  GetStatus = 'getStatus',
+  GetConfiguration = 'getConfiguration',
+  SetConfiguration = 'setConfiguration',
+  GetProfiles = 'getProfiles',
+  GetActiveProfile = 'getActiveProfile',
+  SetActiveProfile = 'setActiveProfile',
+  CreateProfile = 'createProfile',
+  UpdateProfile = 'updateProfile',
+  DeleteProfile = 'deleteProfile',
+  GetTaskHistory = 'getTaskHistory',
+  GetTaskDetails = 'getTaskDetails',
+  ClearCurrentTask = 'clearCurrentTask',
+  CancelCurrentTask = 'cancelCurrentTask',
+  ResumeTask = 'resumeTask',
+  PressPrimaryButton = 'pressPrimaryButton',
+  PressSecondaryButton = 'pressSecondaryButton',
+  SendMessage = 'sendMessage',
+  StartNewTask = 'startNewTask'
 }
 
-import type { RooCodeEventName } from '@roo-code/types';
+import type {RooCodeEventName} from '@roo-code/types';
 
 // Base envelope shared by all messages
 interface BaseMessageEnvelope {
@@ -125,31 +125,38 @@ interface AgentResponseMessage extends BaseMessageEnvelope {
 
 interface ActiveTaskIdsResponseMessage extends BaseMessageEnvelope {
   type: EMessageFromAgent.ActiveTaskIdsResponse;
-  data: { activeTaskIds: string[] };
+  data: {activeTaskIds: string[]};
   event?: undefined;
 }
 
 interface ProfilesResponseMessage extends BaseMessageEnvelope {
   type: EMessageFromAgent.ProfilesResponse;
-  data: { profiles: string[] };
+  data: {profiles: string[]};
   event?: undefined;
 }
 
 interface ActiveProfileResponseMessage extends BaseMessageEnvelope {
   type: EMessageFromAgent.ActiveProfileResponse;
-  data: { activeProfile?: string };
+  data: {activeProfile?: string};
   event?: undefined;
 }
 
 interface RooCodeCommandResponseMessage extends BaseMessageEnvelope {
   type: EMessageFromAgent.RooCodeCommandResponse;
-  data: { command: string; success: boolean; result?: any; error?: string; extensionId?: string; taskId?: string };
+  data: {
+    command: string;
+    success: boolean;
+    result?: any;
+    error?: string;
+    extensionId?: string;
+    taskId?: string;
+  };
   event?: undefined;
 }
 
 interface RooCodeTaskHistoryMessage extends BaseMessageEnvelope {
   type: EMessageFromAgent.RooCodeTaskHistory;
-  data: { taskId?: string; history?: any[]; messages?: any[] };
+  data: {taskId?: string; history?: any[]; messages?: any[]};
   event?: undefined;
 }
 

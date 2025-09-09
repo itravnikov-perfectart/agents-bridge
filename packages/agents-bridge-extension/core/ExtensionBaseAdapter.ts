@@ -1,5 +1,5 @@
-import * as vscode from "vscode";
-import { logger } from "../utils/logger";
+import * as vscode from 'vscode';
+import {logger} from '../utils/logger';
 
 /**
  * Extension base adapter class providing common functionality for extension adapters
@@ -68,12 +68,10 @@ export abstract class ExtensionBaseAdapter<TApi = any> {
     this.extension = vscode.extensions.getExtension(this.getExtensionId());
 
     if (this.extension) {
-      logger.info(
-        `Found ${this.getDisplayName()} v${this.extension.packageJSON.version}`,
-      );
+      logger.info(`Found ${this.getDisplayName()} v${this.extension.packageJSON.version}`);
     } else {
       throw new Error(
-        `${this.getDisplayName()} not found. Please install ${this.getDisplayName()}.`,
+        `${this.getDisplayName()} not found. Please install ${this.getDisplayName()}.`
       );
     }
   }
@@ -81,9 +79,7 @@ export abstract class ExtensionBaseAdapter<TApi = any> {
   /**
    * Activate extension
    */
-  protected async activateExtension(
-    forceActivate: boolean = false,
-  ): Promise<void> {
+  protected async activateExtension(forceActivate: boolean = false): Promise<void> {
     if (!this.extension) {
       throw new Error(`${this.getDisplayName()} not discovered`);
     }

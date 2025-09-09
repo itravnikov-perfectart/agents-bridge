@@ -1,8 +1,21 @@
 {
-  "semi": true,
-  "trailingComma": "es5",
   "singleQuote": true,
-  "printWidth": 80,
-  "tabWidth": 2,
-  "useTabs": false
+  "printWidth": 100,
+  "trailingComma": "none",
+  "endOfLine": "lf",
+  "bracketSpacing": false,
+  "overrides": [
+    {
+      "files": ["*.json", "*.jsonc", "*.json5"],
+      "options": {
+        "parser": "json"
+      }
+    },
+    {
+      "files": ["*.ts", "*.tsx"],
+      "options": {
+        "parser": "typescript"
+      }
+    }
+  ]
 }

@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { Settings as SettingsIcon, X, Save } from 'lucide-react';
-import { cn } from '../utils/cn';
+import React, {useState, useEffect} from 'react';
+import {Settings as SettingsIcon, X, Save} from 'lucide-react';
+import {cn} from '../utils/cn';
 
 interface SettingsProps {
   isOpen: boolean;
@@ -22,10 +22,10 @@ const DEFAULT_SETTINGS: SettingsData = {
   showTimer: true,
   retryOnError: true,
   maxRetries: 3,
-  githubToken: '',
+  githubToken: ''
 };
 
-export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
+export const Settings: React.FC<SettingsProps> = ({isOpen, onClose}) => {
   const [settings, setSettings] = useState<SettingsData>(DEFAULT_SETTINGS);
   const [hasChanges, setHasChanges] = useState(false);
 
@@ -35,7 +35,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+        setSettings({...DEFAULT_SETTINGS, ...parsed});
       } catch (error) {
         console.error('Failed to parse saved settings:', error);
       }
@@ -51,7 +51,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
 
   // Update setting and mark as changed
   const updateSetting = <K extends keyof SettingsData>(key: K, value: SettingsData[K]) => {
-    setSettings(prev => ({ ...prev, [key]: value }));
+    setSettings((prev) => ({...prev, [key]: value}));
     setHasChanges(true);
   };
 
@@ -68,10 +68,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             <SettingsIcon className="h-5 w-5" />
             <h2 className="text-lg font-semibold">Settings</h2>
           </div>
-          <button
-            onClick={onClose}
-            className="p-1 hover:bg-accent rounded-md transition-colors"
-          >
+          <button onClick={onClose} className="p-1 hover:bg-accent rounded-md transition-colors">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -81,7 +78,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           {/* Auto Approval Settings */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-foreground">Auto Approval</h3>
-            
+
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Enable Auto Approval</label>
@@ -108,7 +105,9 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
                   min="5"
                   max="60"
                   value={settings.autoApprovalTimeout}
-                  onChange={(e) => updateSetting('autoApprovalTimeout', parseInt(e.target.value) || 10)}
+                  onChange={(e) =>
+                    updateSetting('autoApprovalTimeout', parseInt(e.target.value) || 10)
+                  }
                   className="w-full px-3 py-2 border border-input rounded-md bg-background text-sm focus:outline-none focus:ring-2 focus:ring-ring"
                 />
               </div>
@@ -118,7 +117,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           {/* Timer Settings */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-foreground">Timer Display</h3>
-            
+
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Show Timer</label>
@@ -141,7 +140,7 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           {/* Error Handling Settings */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-foreground">Error Handling</h3>
-            
+
             <div className="flex items-center justify-between">
               <div className="space-y-1">
                 <label className="text-sm font-medium">Auto Retry on Error</label>
@@ -178,11 +177,12 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
           {/* GitHub Integration Settings */}
           <div className="space-y-3">
             <h3 className="text-sm font-medium text-foreground">GitHub Integration</h3>
-            
+
             <div className="space-y-2">
               <label className="text-sm font-medium">GitHub Token</label>
               <p className="text-xs text-muted-foreground">
-                Personal access token for GitHub API access. Used for repository operations and code analysis.
+                Personal access token for GitHub API access. Used for repository operations and code
+                analysis.
               </p>
               <textarea
                 value={settings.githubToken}
@@ -213,10 +213,10 @@ export const Settings: React.FC<SettingsProps> = ({ isOpen, onClose }) => {
             onClick={saveSettings}
             disabled={!hasChanges}
             className={cn(
-              "px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2",
+              'px-4 py-2 text-sm font-medium rounded-md transition-colors flex items-center gap-2',
               hasChanges
-                ? "bg-primary text-primary-foreground hover:bg-primary/90"
-                : "bg-muted text-muted-foreground cursor-not-allowed"
+                ? 'bg-primary text-primary-foreground hover:bg-primary/90'
+                : 'bg-muted text-muted-foreground cursor-not-allowed'
             )}
           >
             <Save className="h-4 w-4" />
@@ -237,7 +237,7 @@ export const useSettings = () => {
     if (savedSettings) {
       try {
         const parsed = JSON.parse(savedSettings);
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+        setSettings({...DEFAULT_SETTINGS, ...parsed});
       } catch (error) {
         console.error('Failed to parse saved settings:', error);
       }
@@ -245,16 +245,16 @@ export const useSettings = () => {
   }, []);
 
   const updateSettings = (newSettings: Partial<SettingsData>) => {
-    const updated = { ...settings, ...newSettings };
+    const updated = {...settings, ...newSettings};
     setSettings(updated);
     localStorage.setItem('agents-bridge-settings', JSON.stringify(updated));
   };
 
-  return { settings, updateSettings };
+  return {settings, updateSettings};
 };
 
 // Hook to get GitHub token specifically
 export const useGitHubToken = () => {
-  const { settings } = useSettings();
+  const {settings} = useSettings();
   return settings.githubToken;
 };

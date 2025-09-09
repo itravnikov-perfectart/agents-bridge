@@ -4,12 +4,13 @@
   "version": "0.0.1",
   "description": "Agents Bridge - VS Code extension, WebSocket server, and UI monorepo",
   "private": true,
-  "workspaces": [
-    "packages/*"
-  ],
+  "workspaces": ["packages/*"],
   "scripts": {
     "build": "pnpm -r run build",
-    "lint": "pnpm -r run lint",
+    "lint": "eslint .",
+    "lint:fix": "eslint . --fix",
+    "format": "prettier . --write",
+    "format:check": "prettier . --check",
     "clean": "pnpm -r run clean",
     "type-check": "pnpm -r run type-check",
     "extension:build": "pnpm --filter agents-bridge-extension run build",

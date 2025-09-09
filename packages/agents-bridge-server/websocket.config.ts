@@ -1,7 +1,7 @@
-import { WebSocket, WebSocketServer } from "ws";
-import { AgentManager } from "./agent-manager";
-import { DockerManager } from "./docker-manager";
-import { logger } from "./serverLogger";
+import {WebSocket, WebSocketServer} from 'ws';
+import {AgentManager} from './agent-manager';
+import {DockerManager} from './docker-manager';
+import {logger} from './serverLogger';
 
 import {
   EConnectionSource,
@@ -9,8 +9,8 @@ import {
   EMessageFromServer,
   EMessageFromUI,
   ESystemMessage,
-  Message,
-} from "./types";
+  Message
+} from './types';
 
 export interface WebSocketConfig {
   port: number;
@@ -22,7 +22,14 @@ export interface WebSocketConfig {
 }
 
 export const createWebSocketServer = (config: WebSocketConfig) => {
-  const { port, pingInterval = 10000, connectionTimeout = 30000, autoApproveTools = false, autoFollowups = false, autoFollowupDefault = '' } = config;
+  const {
+    port,
+    pingInterval = 10000,
+    connectionTimeout = 30000,
+    autoApproveTools = false,
+    autoFollowups = false,
+    autoFollowupDefault = ''
+  } = config;
 
   const wss = new WebSocketServer({
     port,
@@ -36,105 +43,82 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
       // }
       // TODO: Add JWT verification
       cb(true);
-    },
+    }
   });
 
   const agentManager = new AgentManager(pingInterval, 5); // 5x timeout multiplier
   const dockerManager = new DockerManager();
   const uiClients = new Set<WebSocket>(); // Track UI clients separately
 
-  const healthCheckInterval = setInterval(
-    () => agentManager.checkHealth(),
-    pingInterval,
-  );
+  const healthCheckInterval = setInterval(() => agentManager.checkHealth(), pingInterval);
 
-  wss.on("connection", (socket: WebSocket, req) => {
+  wss.on('connection', (socket: WebSocket, req) => {
     logger.info(`🔗 New connection from ${req}`);
     let source: EConnectionSource | undefined;
     let agentId: string | undefined;
 
-    socket.on("message", (data) => {
+    socket.on('message', (data) => {
       try {
         const message = JSON.parse(data.toString()) as Message;
         source = message.source;
 
         logger.info(
-          `Received message from ${req.socket.remoteAddress}: ${JSON.stringify(message)}`,
+          `Received message from ${req.socket.remoteAddress}: ${JSON.stringify(message)}`
         );
 
         if (source === EConnectionSource.UI) {
           uiClients.add(socket);
-          handleUIConnection(message, socket, agentManager, dockerManager, uiClients).catch(error => {
-            logger.error('Error handling UI connection:', error);
-          });
+          handleUIConnection(message, socket, agentManager, dockerManager, uiClients).catch(
+            (error) => {
+              logger.error('Error handling UI connection:', error);
+            }
+          );
         } else if (source === EConnectionSource.Agent) {
           agentId = message.agent?.id;
 
-          handleAgentConnection(
-            message,
-            socket,
-            agentManager,
-            uiClients,
-            {
-              autoApproveTools,
-              autoFollowups,
-              autoFollowupDefault,
-            },
-          );
+          handleAgentConnection(message, socket, agentManager, uiClients, {
+            autoApproveTools,
+            autoFollowups,
+            autoFollowupDefault
+          });
         } else {
           logger.warn(`Unknown connection type: ${source}`);
         }
       } catch (error) {
-        logger.error("Invalid message format", error);
+        logger.error('Invalid message format', error);
       }
     });
 
-    socket.on("close", (code, reason) => {
+    socket.on('close', (code, reason) => {
       switch (source) {
         case EConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
-            broadcastAgentUpdate(
-              uiClients,
-              agentManager,
-              "disconnected",
-              agentId,
-            );
+            broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
             agentManager.removeAgent(agentId);
-            logger.info(
-              `Agent disconnected: ${agentId}, code: ${code}, reason: ${reason}`,
-            );
+            logger.info(`Agent disconnected: ${agentId}, code: ${code}, reason: ${reason}`);
           } else {
-            logger.error(
-              `Agent disconnected: code: ${code}, reason: ${reason}`,
-            );
+            logger.error(`Agent disconnected: code: ${code}, reason: ${reason}`);
           }
           break;
         case EConnectionSource.UI:
           uiClients.delete(socket);
           logger.info(
-            `UI client disconnected, code: ${code}, reason: ${reason}. Total UI clients: ${uiClients.size}`,
+            `UI client disconnected, code: ${code}, reason: ${reason}. Total UI clients: ${uiClients.size}`
           );
           break;
         default:
-          logger.info(
-            `Unknown connection disconnected, code: ${code}, reason: ${reason}`,
-          );
+          logger.info(`Unknown connection disconnected, code: ${code}, reason: ${reason}`);
           break;
       }
     });
 
-    socket.on("error", (error) => {
+    socket.on('error', (error) => {
       switch (source) {
         case EConnectionSource.Agent:
           if (agentId) {
             // Broadcast agent update before removing
-            broadcastAgentUpdate(
-              uiClients,
-              agentManager,
-              "disconnected",
-              agentId,
-            );
+            broadcastAgentUpdate(uiClients, agentManager, 'disconnected', agentId);
             logger.error(`WebSocket error for agent ${agentId}:`, error);
             agentManager.removeAgent(agentId);
           } else {
@@ -173,49 +157,47 @@ export const createWebSocketServer = (config: WebSocketConfig) => {
         dockerManager.cleanup().finally(() => {
           wss.close(() => resolve());
         });
-      }),
+      })
   };
 };
 
 export type WebSocketServerInstance = ReturnType<typeof createWebSocketServer>;
-
-
 
 const handleUIConnection = async (
   message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
   dockerManager: DockerManager,
-  uiClients: Set<WebSocket>,
+  uiClients: Set<WebSocket>
 ) => {
-  const { type } = message;
+  const {type} = message;
 
   switch (type) {
     case EMessageFromUI.GetAgents:
-      const agents = Array.from(agentManager.agents.entries()).map(
-        ([id, agent]) => ({
-          id,
-          status: "connected",
-          lastHeartbeat: agent.lastHeartbeat,
-          connectedAt: agent.connectedAt,
-          gracePeriod: agent.gracePeriod,
-          workspacePath: agent.workspacePath,
-          isRemote: agent.isRemote,
-        }),
-      );
+      const agents = Array.from(agentManager.agents.entries()).map(([id, agent]) => ({
+        id,
+        status: 'connected',
+        lastHeartbeat: agent.lastHeartbeat,
+        connectedAt: agent.connectedAt,
+        gracePeriod: agent.gracePeriod,
+        workspacePath: agent.workspacePath,
+        isRemote: agent.isRemote
+      }));
 
       logger.info(`[DEBUG] Sending agent list with ${agents.length} agents:`);
-      agents.forEach(agent => {
-        logger.info(`[DEBUG] Agent ${agent.id}: isRemote=${agent.isRemote}, workspace=${agent.workspacePath}`);
+      agents.forEach((agent) => {
+        logger.info(
+          `[DEBUG] Agent ${agent.id}: isRemote=${agent.isRemote}, workspace=${agent.workspacePath}`
+        );
       });
 
       const messageAgentList: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.AgentList,
         data: {
-          agents,
+          agents
         },
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
       socket.send(JSON.stringify(messageAgentList));
       break;
@@ -242,29 +224,29 @@ const handleUIConnection = async (
         source: message.source,
         type,
         data: message.data,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
       agentToSendMessage.socket.send(JSON.stringify(messageToSend));
       logger.info(
-        `Forwarded message to RooCode via agent ${agentId}: ${JSON.stringify(message.data)}`,
+        `Forwarded message to RooCode via agent ${agentId}: ${JSON.stringify(message.data)}`
       );
       break;
-    
+
     case EMessageFromUI.CreateRemoteAgent:
       try {
-        const { workspacePath } = message.data || {};
+        const {workspacePath} = message.data || {};
         const agentId = `remote-${Date.now()}`;
         const container = await dockerManager.createRemoteAgent(agentId, workspacePath);
-        
+
         const responseMessage: Message = {
           source: EConnectionSource.Server,
           type: EMessageFromServer.RemoteAgentCreated,
-          data: { container },
-          timestamp: Date.now(),
+          data: {container},
+          timestamp: Date.now()
         };
-        
+
         socket.send(JSON.stringify(responseMessage));
-        
+
         // Broadcast to all UI clients
         const broadcastData = JSON.stringify(responseMessage);
         uiClients.forEach((client) => {
@@ -272,43 +254,43 @@ const handleUIConnection = async (
             client.send(broadcastData);
           }
         });
-        
+
         logger.info(`Remote agent container creation requested: ${agentId}`);
       } catch (error) {
         logger.error('Failed to create remote agent:', error);
         const errorMessage: Message = {
           source: EConnectionSource.Server,
           type: EMessageFromServer.RemoteAgentError,
-          data: { 
+          data: {
             error: error instanceof Error ? error.message : 'Unknown error',
             action: 'create'
           },
-          timestamp: Date.now(),
+          timestamp: Date.now()
         };
         socket.send(JSON.stringify(errorMessage));
       }
       break;
-      
+
     case EMessageFromUI.StopRemoteAgent:
       try {
-        const { agentId: stopAgentId } = message.data || {};
+        const {agentId: stopAgentId} = message.data || {};
         if (!stopAgentId) {
           throw new Error('Agent ID is required');
         }
-        
+
         const success = await dockerManager.stopRemoteAgent(stopAgentId);
         const responseMessage: Message = {
           source: EConnectionSource.Server,
           type: EMessageFromServer.RemoteAgentStopped,
-          data: { 
+          data: {
             agentId: stopAgentId,
-            success 
+            success
           },
-          timestamp: Date.now(),
+          timestamp: Date.now()
         };
-        
+
         socket.send(JSON.stringify(responseMessage));
-        
+
         // Broadcast to all UI clients
         const broadcastData = JSON.stringify(responseMessage);
         uiClients.forEach((client) => {
@@ -316,35 +298,33 @@ const handleUIConnection = async (
             client.send(broadcastData);
           }
         });
-        
+
         logger.info(`Remote agent container stop requested: ${stopAgentId}`);
       } catch (error) {
         logger.error('Failed to stop remote agent:', error);
         const errorMessage: Message = {
           source: EConnectionSource.Server,
           type: EMessageFromServer.RemoteAgentError,
-          data: { 
+          data: {
             error: error instanceof Error ? error.message : 'Unknown error',
             action: 'stop'
           },
-          timestamp: Date.now(),
+          timestamp: Date.now()
         };
         socket.send(JSON.stringify(errorMessage));
       }
       break;
-      
+
     case EMessageFromUI.GetRemoteAgents:
       const remoteAgents = dockerManager.getRemoteAgents();
       const remoteAgentsMessage: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.RemoteAgentsList,
-        data: { remoteAgents },
-        timestamp: Date.now(),
+        data: {remoteAgents},
+        timestamp: Date.now()
       };
       socket.send(JSON.stringify(remoteAgentsMessage));
       break;
-
-
 
     //   const agentIdToCreateTask = message.details?.agentId;
     //   const agentToAssignTask = agentManager.agents.get(agentIdToCreateTask);
@@ -372,7 +352,7 @@ const handleUIConnection = async (
       const messageRegistered: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.Registered,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
       socket.send(JSON.stringify(messageRegistered));
       break;
@@ -384,7 +364,7 @@ const handleUIConnection = async (
       const messageUnregistered: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.Unregistered,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
       socket.send(JSON.stringify(messageUnregistered));
       socket.close();
@@ -399,20 +379,18 @@ const handleUIConnection = async (
 const broadcastAgentUpdate = (
   uiClients: Set<WebSocket>,
   agentManager: AgentManager,
-  action: "connected" | "disconnected",
-  agentId: string,
+  action: 'connected' | 'disconnected',
+  agentId: string
 ) => {
-  const agents = Array.from(agentManager.agents.entries()).map(
-    ([id, agent]) => ({
-      id,
-      status: action === "connected" ? "connected" : "disconnected",
-      lastHeartbeat: agent.lastHeartbeat,
-      connectedAt: agent.connectedAt,
-      gracePeriod: agent.gracePeriod,
-      workspacePath: agent.workspacePath,
-      isRemote: agent.isRemote,
-    }),
-  );
+  const agents = Array.from(agentManager.agents.entries()).map(([id, agent]) => ({
+    id,
+    status: action === 'connected' ? 'connected' : 'disconnected',
+    lastHeartbeat: agent.lastHeartbeat,
+    connectedAt: agent.connectedAt,
+    gracePeriod: agent.gracePeriod,
+    workspacePath: agent.workspacePath,
+    isRemote: agent.isRemote
+  }));
 
   const updateMessage: Message = {
     source: EConnectionSource.Server,
@@ -420,9 +398,9 @@ const broadcastAgentUpdate = (
     data: {
       action,
       agentId,
-      agents,
+      agents
     },
-    timestamp: Date.now(),
+    timestamp: Date.now()
   };
 
   const messageData = JSON.stringify(updateMessage);
@@ -438,16 +416,20 @@ const broadcastAgentUpdate = (
   });
 };
 
-type AutoConfig = { autoApproveTools: boolean; autoFollowups: boolean; autoFollowupDefault: string };
+type AutoConfig = {
+  autoApproveTools: boolean;
+  autoFollowups: boolean;
+  autoFollowupDefault: string;
+};
 
 const handleAgentConnection = (
   message: Message,
   socket: WebSocket,
   agentManager: AgentManager,
   uiClients: Set<WebSocket>,
-  autoConfig: AutoConfig,
+  autoConfig: AutoConfig
 ) => {
-  const { type, agent } = message;
+  const {type, agent} = message;
 
   const agentId = agent?.id;
 
@@ -462,41 +444,36 @@ const handleAgentConnection = (
       // Determine if this is a remote agent based on ID pattern
       const isRemoteAgent = agentId.startsWith('remote-');
       logger.info(`[DEBUG] Registering agent ${agentId}, isRemote: ${isRemoteAgent}`);
-      
+
       const registredAgentId = agentManager.registerAgentWithId(
         agentId, // Use the agent's provided ID
         socket,
         agent?.workspacePath,
-        isRemoteAgent,
+        isRemoteAgent
       );
       const totalAgentsAfterReg = agentManager.agents.size;
       logger.info(
-        `[DEBUG] Agent connected: ${registredAgentId}. Total agents: ${totalAgentsAfterReg}`,
+        `[DEBUG] Agent connected: ${registredAgentId}. Total agents: ${totalAgentsAfterReg}`
       );
 
       // List all current agent IDs for debugging
       const allAgentIds = Array.from(agentManager.agents.keys());
       logger.info(`[DEBUG] All registered agent IDs: ${allAgentIds.join(', ')}`);
-      
+
       const messageRegistered: Message = {
         source: EConnectionSource.Server,
         type: EMessageFromServer.Registered,
         agent: {
-          id: registredAgentId,
+          id: registredAgentId
         },
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
       socket.send(JSON.stringify(messageRegistered));
 
       // Broadcast agent update to UI clients
-      broadcastAgentUpdate(
-        uiClients,
-        agentManager,
-        "connected",
-        registredAgentId,
-      );
+      broadcastAgentUpdate(uiClients, agentManager, 'connected', registredAgentId);
       break;
-   
+
     case ESystemMessage.Ping:
       // For non-register messages, check if agent exists
       const agentPing = agentManager.getAgent(agentId);
@@ -537,7 +514,7 @@ const handleAgentConnection = (
         agent: message.agent,
         data: message.data,
         event: message.event,
-        timestamp: Date.now(),
+        timestamp: Date.now()
       };
 
       // Broadcast to UI clients only
@@ -550,19 +527,25 @@ const handleAgentConnection = (
           uiClients.delete(client);
         }
       });
-      logger.info(`Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${JSON.stringify(message)}`);
+      logger.info(
+        `Forwarded RooCode response from agent ${agentId} to ${uiClients.size} UI clients: ${JSON.stringify(message)}`
+      );
 
       // Auto-approval / auto-followup logic
       try {
         const evt: any = (message as any)?.event?.message;
         const taskId: string | undefined = (message as any)?.event?.taskId?.toString?.();
-        if (!evt || !taskId) break;
+        if (!evt || !taskId) {
+          break;
+        }
 
         const say = evt?.say;
         const isAsk = evt?.type === 'ask' || say === 'ask';
         const isPartial = !!evt?.partial;
 
-        if (!isAsk || isPartial) break; // Only act on final ask events
+        if (!isAsk || isPartial) {
+          break;
+        } // Only act on final ask events
 
         // If tool approval is requested
         if (autoConfig.autoApproveTools && (evt?.ask === 'tool' || evt?.tool)) {
@@ -570,18 +553,24 @@ const handleAgentConnection = (
           let toolPayload: any = null;
           const text = evt?.text;
           if (typeof text === 'string' && text.trim().startsWith('{')) {
-            try { toolPayload = JSON.parse(text); } catch {}
+            try {
+              toolPayload = JSON.parse(text);
+            } catch {}
           }
           const toolName = toolPayload?.tool || evt?.tool?.name || evt?.tool || 'unknown_tool';
           const responseMsg: Message = {
             source: EConnectionSource.UI,
             type: EMessageFromUI.SendMessageToTask,
-            agent: { id: agentId },
+            agent: {id: agentId},
             data: {
               taskId,
-              message: JSON.stringify({ approved: true, tool: toolName, data: toolPayload || evt?.tool || {} })
+              message: JSON.stringify({
+                approved: true,
+                tool: toolName,
+                data: toolPayload || evt?.tool || {}
+              })
             },
-            timestamp: Date.now(),
+            timestamp: Date.now()
           };
           const agentConn = agentManager.getAgent(agentId);
           if (agentConn?.socket?.readyState === WebSocket.OPEN) {
@@ -598,38 +587,46 @@ const handleAgentConnection = (
           if (Array.isArray(rawSuggest)) {
             for (const s of rawSuggest) {
               const val = s?.answer ?? s?.text ?? s?.label ?? s?.value ?? s?.name;
-              if (typeof val === 'string' && val.trim()) candidates.push(val.trim());
+              if (typeof val === 'string' && val.trim()) {
+                candidates.push(val.trim());
+              }
             }
           }
           if (evt?.buttons) {
             const primary = evt.buttons.primary ?? evt.buttons.ok ?? evt.buttons.confirm;
             const secondary = evt.buttons.secondary ?? evt.buttons.cancel;
-            if (typeof primary === 'string' && primary.trim()) candidates.push(primary.trim());
-            if (typeof secondary === 'string' && secondary.trim()) candidates.push(secondary.trim());
+            if (typeof primary === 'string' && primary.trim()) {
+              candidates.push(primary.trim());
+            }
+            if (typeof secondary === 'string' && secondary.trim()) {
+              candidates.push(secondary.trim());
+            }
           }
-          let answer = autoConfig.autoFollowupDefault && autoConfig.autoFollowupDefault.trim()
-            ? autoConfig.autoFollowupDefault.trim()
-            : (candidates[0] || 'Yes');
+          let answer =
+            autoConfig.autoFollowupDefault && autoConfig.autoFollowupDefault.trim()
+              ? autoConfig.autoFollowupDefault.trim()
+              : candidates[0] || 'Yes';
 
           const responseMsg: Message = {
             source: EConnectionSource.UI,
             type: EMessageFromUI.SendMessageToTask,
-            agent: { id: agentId },
-            data: { taskId, message: answer },
-            timestamp: Date.now(),
+            agent: {id: agentId},
+            data: {taskId, message: answer},
+            timestamp: Date.now()
           };
           const agentConn = agentManager.getAgent(agentId);
           if (agentConn?.socket?.readyState === WebSocket.OPEN) {
             agentConn.socket.send(JSON.stringify(responseMsg));
-            logger.info(`Auto-answered follow-up for task ${taskId} on agent ${agentId} with: ${answer}`);
+            logger.info(
+              `Auto-answered follow-up for task ${taskId} on agent ${agentId} with: ${answer}`
+            );
           }
         }
       } catch (e) {
         logger.error('Auto-approval/followup handling error:', e);
       }
       break;
-      
-   
+
     case ESystemMessage.Unregister:
       agentManager.removeAgent(agentId);
       logger.info(`Agent disconnected: ${agentId}`);
