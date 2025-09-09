@@ -14,6 +14,8 @@
     "prepare": "husky",
     "clean": "pnpm -r run clean",
     "type-check": "pnpm -r run type-check",
+    "test": "pnpm -r run test",
+    "test:watch": "pnpm -r run test:watch",
     "extension:build": "pnpm --filter agents-bridge-extension run build",
     "server:dev": "pnpm --filter agents-bridge-server run dev",
     "ui:dev": "pnpm --filter agents-bridge-ui run dev",

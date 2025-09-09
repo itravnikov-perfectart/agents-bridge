@@ -78,6 +78,8 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint . --ext .ts",
     "lint:fix": "eslint . --ext .ts --fix",
+    "test": "vitest run",
+    "test:watch": "vitest",
     "package": "npm run build && vsce package --no-dependencies",
     "vscode:package": "npm run package"
   },
@@ -99,6 +101,7 @@
     "@vscode/vsce": "^3.2.1",
     "esbuild": "^0.25.3",
     "eslint": "^9.25.1",
-    "typescript": "^5.8.3"
+    "typescript": "^5.8.3",
+    "vitest": "^2.1.5"
   }
 }
