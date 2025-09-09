@@ -40,7 +40,7 @@ export const readConfiguration = (): AgentConfiguration => {
     ),
     wsUrl: config.get<string>(CONFIG_KEYS.WS_URL, DEFAULT_CONFIG.wsUrl),
     wsPingInterval: config.get<number>(CONFIG_KEYS.WS_PING_INTERVAL, DEFAULT_CONFIG.wsPingInterval),
-    agentId: config.get<string>(CONFIG_KEYS.AGENT_ID, DEFAULT_CONFIG.agentId)
+    agentId: config.get<string>(CONFIG_KEYS.AGENT_ID, DEFAULT_CONFIG.agentId ?? '')
   };
 };
 

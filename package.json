@@ -11,12 +11,17 @@
     "lint:fix": "eslint . --fix",
     "format": "prettier . --write",
     "format:check": "prettier . --check",
+    "prepare": "husky",
     "clean": "pnpm -r run clean",
     "type-check": "pnpm -r run type-check",
     "extension:build": "pnpm --filter agents-bridge-extension run build",
     "server:dev": "pnpm --filter agents-bridge-server run dev",
     "ui:dev": "pnpm --filter agents-bridge-ui run dev",
     "ui:build": "pnpm --filter agents-bridge-ui run build"
+  },
+  "lint-staged": {
+    "**/*.{ts,tsx}": ["eslint --fix", "prettier --write"],
+    "**/*.{js,jsx,mjs,cjs,json,css,md}": ["prettier --write"]
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^8.40.0",
@@ -25,6 +30,8 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-n": "^17.21.3",
     "eslint-plugin-prettier": "^5.5.3",
+    "husky": "^9.1.6",
+    "lint-staged": "^15.2.10",
     "knip": "^5.63.0",
     "prettier": "^3.6.2",
     "typescript": "^5.8.3"
