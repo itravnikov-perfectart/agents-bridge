@@ -3,8 +3,8 @@
   "description": "Docker образ с VS Code, Roo Code extension и Agents Bridge extension для удаленной разработки",
   "version": "0.0.1",
   "scripts": {
-    "build": "./scripts/build.sh",
-    "start": "./scripts/run.sh",
+    "build:docker": "./scripts/build.sh",
+    "start:docker": "./scripts/run.sh",
     "build:no-cache": "./scripts/build.sh --no-cache",
     "clean": "docker rmi agents-bridge-remote || true",
     "logs": "docker logs agents-bridge-vscode",
